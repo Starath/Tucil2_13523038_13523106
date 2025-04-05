@@ -9,6 +9,9 @@
 // Definisikan struct Pixel (tidak berubah)
 struct Pixel {
     unsigned char r = 0, g = 0, b = 0;
+
+    Pixel() : r(0), g(0), b(0) {}
+    Pixel(unsigned char r, unsigned char g, unsigned char b) : r(r), g(g), b(b) {}
 };
 
 // Deklarasi kelas exception kustom (opsional tapi bagus)

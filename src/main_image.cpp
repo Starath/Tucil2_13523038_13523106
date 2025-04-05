@@ -76,7 +76,7 @@ int main() {
     // --- Test Loading ---
     printTestHeader("Image Loading");
     Image testImg; // Gunakan objek ini untuk tes berikutnya
-    const std::string inputFilename = "test/Me-1.jpg"; // !!! PENTING: Anda harus menyediakan file ini !!!
+    const std::string inputFilename = "xiao.png"; // !!! PENTING: Anda harus menyediakan file ini !!!
     bool loadSuccess = false;                      // Untuk skip tes berikutnya jika load gagal
 
     // Coba load file yang valid (gunakan factory method)
@@ -85,6 +85,20 @@ int main() {
         if (!testImg.isEmpty() && testImg.getWidth() > 0 && testImg.getHeight() > 0) {
             std::cout << "PASS: loadFromFile successful for '" << inputFilename << "' (" << testImg.getWidth() << "x" << testImg.getHeight() << ")" << std::endl; tests_passed++;
             loadSuccess = true;
+
+            // Mencetak seluruh data piksel dari gambar
+            const std::vector<Pixel>& pixelData = testImg.getPixelData(); // Mengambil data piksel
+
+            for (int y = 0; y < testImg.getHeight(); ++y) {
+                for (int x = 0; x < testImg.getWidth(); ++x) {
+                    Pixel p = testImg.getPixel(x, y);  // Mendapatkan piksel pada koordinat (x, y)
+                    std::cout << "Pixel (" << x << "," << y << "): "
+                            << "R=" << static_cast<int>(p.r) << ", "
+                            << "G=" << static_cast<int>(p.g) << ", "
+                            << "B=" << static_cast<int>(p.b) << std::endl;
+                }
+            }
+
         } else {
              std::cout << "FAIL: loadFromFile completed but image state is invalid." << std::endl; tests_failed++;
         }
