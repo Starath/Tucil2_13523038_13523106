@@ -49,7 +49,6 @@ int main() {
     }
 
     // --- Membuat QuadTree dan Membagi Blok --- 
-    const std::vector<Pixel>& pixelData = testImg.getPixelData(); // Ambil pixelData sebagai referensi
     int width = testImg.getWidth();
     int height = testImg.getHeight();
 
@@ -57,7 +56,7 @@ int main() {
     QuadTreeNode* rootNode = new QuadTreeNode(0, 0, width, height);
 
     // Panggil divideBlock untuk membangun QuadTree sesuai dengan pilihan metode
-    divideBlock(pixelData, width, rootNode, threshold, minBlockSize, methodChoice);
+    divideBlock(testImg, rootNode, threshold, minBlockSize, methodChoice);
     
     std::cout << "Proses pembagian blok dengan metode " << methodChoice << " selesai!" << std::endl;
 
@@ -68,7 +67,7 @@ int main() {
     std::cout << "Total nodes terbentuk: " << nodes.size() << std::endl;
 
     // Menampilkan informasi dari beberapa node pertama sebagai tes
-    for (size_t i = 0; i < std::min(nodes.size(), size_t(5)); ++i) {
+    for (size_t i = nodes.size() - 1; i > nodes.size() - 6; --i) {
         std::cout << "Node " << i << " -> Position: (" << nodes[i]->x << ", " << nodes[i]->y 
                   << "), Size: (" << nodes[i]->width << "x" << nodes[i]->height 
                   << "), Leaf: " << (nodes[i]->isLeaf ? "Yes" : "No") << std::endl;

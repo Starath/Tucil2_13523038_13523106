@@ -28,9 +28,9 @@ private:
     std::vector<Pixel> pixels;
 
     // Helper untuk validasi koordinat (tidak perlu publik)
-    bool checkBounds(int x, int y) const noexcept;
+    bool checkBounds(int i, int j) const noexcept;
     // Helper untuk menghitung indeks 1D (juga tidak perlu publik)
-    std::size_t getIndex(int x, int y) const; // Implementasi bisa inline di cpp
+    std::size_t getIndex(int i, int j) const; // Implementasi bisa inline di cpp
 
 public:
     // Konstanta untuk jumlah channel warna
@@ -56,13 +56,13 @@ public:
     // Kualitas hanya relevan untuk JPG (default 85).
     void saveImage(const std::string& filePath, int jpgQuality = 85) const;
 
-    // Mendapatkan piksel pada koordinat (x, y)
-    // Melempar std::out_of_range jika x atau y di luar batas.
-    Pixel getPixel(int x, int y) const;
+    // Mendapatkan piksel pada koordinat (i, j)
+    // Melempar std::out_of_range jika i atau j di luar batas.
+    Pixel getPixel(int i, int j) const;
 
-    // Mengatur piksel pada koordinat (x, y)
-    // Melempar std::out_of_range jika x atau y di luar batas.
-    void setPixel(int x, int y, const Pixel& p);
+    // Mengatur piksel pada koordinat (i, j)
+    // Melempar std::out_of_range jika i atau j di luar batas.
+    void setPixel(int i, int j, const Pixel& p);
 
     // Mengisi seluruh gambar dengan satu warna
     void fill(const Pixel& p);

@@ -23,28 +23,35 @@ struct QuadTreeNode {
         : x(x), y(y), width(width), height(height), isLeaf(true) {
         fill(begin(children), end(children), nullptr);
     }
+
+    ~QuadTreeNode() {
+        for (int i = 0; i < 4; ++i) {
+            delete children[i]; // delete nullptr aman
+            children[i] = nullptr;
+        }
+    }
 };
 
 // Fungsi untuk menghitung variansi
-float calculateVariance(const vector<Pixel>& pixelData, int x, int y, int width, int height);
+float calculateVariance(const Image& image, int x, int y, int width, int height);
 
 // Fungsi untuk menghitung MAD (Mean Absolute Deviation)
-float calculateMAD(const vector<Pixel>& pixelData, int x, int y, int width, int height);
+float calculateMAD(const Image& image, int x, int y, int width, int height);
 
 // Fungsi untuk menghitung Max Pixel Difference
-float calculateMaxPixelDifference(const vector<Pixel>& pixelData, int x, int y, int width, int height);
+float calculateMaxPixelDifference(const Image& image, int x, int y, int width, int height);
 
 // Fungsi untuk membagi blok menggunakan metode variansi
-void divideBlockVariance(const vector<Pixel>& pixelData, int width, QuadTreeNode* node, float threshold, int minBlockSize);
+void divideBlockVariance(const Image& image, QuadTreeNode* node, float threshold, int minBlockSize);
 
 // Fungsi untuk membagi blok menggunakan metode MAD (Mean Absolute Deviation)
-void divideBlockMAD(const vector<Pixel>& pixelData, int width, QuadTreeNode* node, float threshold, int minBlockSize);
+void divideBlockMAD(const Image& image, QuadTreeNode* node, float threshold, int minBlockSize);
 
 // Fungsi untuk membagi blok menggunakan metode Max Pixel Difference
-void divideBlockMaxPixelDifference(const vector<Pixel>& pixelData, int width, QuadTreeNode* node, float threshold, int minBlockSize);
+void divideBlockMaxPixelDifference(const Image& image, QuadTreeNode* node, float threshold, int minBlockSize);
 
 // Fungsi utama untuk memilih metode perhitungan error dan membagi blok gambar
-void divideBlock(const vector<Pixel>& pixelData, int width, QuadTreeNode* node, float threshold, int minBlockSize, int methodChoice);
+void divideBlock(const Image& image, QuadTreeNode* node, float threshold, int minBlockSize, int methodChoice);
 
 // Fungsi untuk mengumpulkan semua node dalam QuadTree
 void collectNodes(QuadTreeNode* node, std::vector<QuadTreeNode*>& nodes);

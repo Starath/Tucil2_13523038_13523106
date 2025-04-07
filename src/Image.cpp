@@ -113,31 +113,31 @@ void Image::saveImage(const std::string& filePath, int jpgQuality) const {
 }
 
 // Implementasi checkBounds (helper private)
-bool Image::checkBounds(int x, int y) const noexcept {
-     return x >= 0 && x < width && y >= 0 && y < height;
+bool Image::checkBounds(int i, int j) const noexcept {
+     return i < height && i >= 0 && j < width && j >= 0;
 }
 
 // Implementasi getIndex (helper private)
-std::size_t Image::getIndex(int x, int y) const {
+std::size_t Image::getIndex(int i, int j) const {
     // Asumsi bounds sudah dicek oleh pemanggil (getPixel/setPixel)
-    return static_cast<std::size_t>(y) * width + x;
+    return static_cast<std::size_t>(i) * width + j;
 }
 
 
 // Implementasi getPixel
-Pixel Image::getPixel(int x, int y) const {
-    if (!checkBounds(x, y)) {
-        throw std::out_of_range("Pixel coordinates (" + std::to_string(x) + ", " + std::to_string(y) + ") are out of bounds ["+ std::to_string(width) + "x" + std::to_string(height) +"].");
+Pixel Image::getPixel(int i, int j) const {
+    if (!checkBounds(i, j)) {
+        throw std::out_of_range("Pixel coordinates (" + std::to_string(j) + ", " + std::to_string(i) + ") are out of bounds ["+ std::to_string(width) + "i" + std::to_string(height) +"].");
     }
-    return pixels[getIndex(x, y)];
+    return pixels[getIndex(i, j)];
 }
 
 // Implementasi setPixel
-void Image::setPixel(int x, int y, const Pixel& p) {
-    if (!checkBounds(x, y)) {
-        throw std::out_of_range("Pixel coordinates (" + std::to_string(x) + ", " + std::to_string(y) + ") are out of bounds ["+ std::to_string(width) + "x" + std::to_string(height) +"].");
+void Image::setPixel(int i, int j, const Pixel& p) {
+    if (!checkBounds(i, j)) {
+        throw std::out_of_range("Pixel coordinates (" + std::to_string(j) + ", " + std::to_string(i) + ") are out of bounds ["+ std::to_string(width) + "i" + std::to_string(height) +"].");
     }
-    pixels[getIndex(x, y)] = p;
+    pixels[getIndex(i, j)] = p;
 }
 
 // Implementasi fill
