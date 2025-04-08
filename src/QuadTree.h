@@ -41,6 +41,8 @@ float calculateMAD(const Image& image, int x, int y, int width, int height);
 // Fungsi untuk menghitung Max Pixel Difference
 float calculateMaxPixelDifference(const Image& image, int x, int y, int width, int height);
 
+float calculateEntropy(const Image& image, int x, int y, int width, int height);
+
 // Fungsi untuk membagi blok menggunakan metode variansi
 void divideBlockVariance(const Image& image, QuadTreeNode* node, float threshold, int minBlockSize);
 
@@ -49,6 +51,8 @@ void divideBlockMAD(const Image& image, QuadTreeNode* node, float threshold, int
 
 // Fungsi untuk membagi blok menggunakan metode Max Pixel Difference
 void divideBlockMaxPixelDifference(const Image& image, QuadTreeNode* node, float threshold, int minBlockSize);
+
+void divideBlockEntropy(const Image& image, QuadTreeNode* node, float threshold, int minBlockSize);
 
 // Fungsi utama untuk memilih metode perhitungan error dan membagi blok gambar
 void divideBlock(const Image& image, QuadTreeNode* node, float threshold, int minBlockSize, int methodChoice);

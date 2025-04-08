@@ -2,6 +2,9 @@
 #include <cmath>
 #include <algorithm>
 #include <limits>
+#include <vector>
+#include <stdexcept>
+#include <unordered_map>
 using namespace std;
 
 
@@ -34,10 +37,6 @@ float calculateVariance(const Image& image, int x, int y, int width, int height)
     // Calculate variance for each color channel
     for (int i = y; i < y + height; ++i) {
         for (int j = x; j < x + width; ++j) {
-            // int index = i * width + j;
-            // varianceR += pow(pixelData[index].r - meanR, 2);
-            // varianceG += pow(pixelData[index].g - meanG, 2);
-            // varianceB += pow(pixelData[index].b - meanB, 2);
             try {
                 Pixel p = image.getPixel(i, j); 
                 varianceR += pow(p.r - meanR, 2);
@@ -51,7 +50,7 @@ float calculateVariance(const Image& image, int x, int y, int width, int height)
         }
     }
 
-    return varianceR + varianceG + varianceB; // Sum of variances for RGB
+    return ((varianceR / totalPixels + varianceG / totalPixels + varianceB / totalPixels)/3); // Sum of variances for RGB
 }
 
 // Dummy function to calculate MAD (Mean Absolute Deviation)
@@ -59,10 +58,12 @@ float calculateMAD(const Image& image, int x, int y, int width, int height) {
     float meanR = 0, meanG = 0, meanB = 0;
     float madR = 0, madG = 0, madB = 0;
 
+    // int counter = 0
     // Calculate mean for each color channel
     for (int i = y; i < y + height; ++i) {
         for (int j = x; j < x + width; ++j) {
             try {
+
                 Pixel p = image.getPixel(i, j); 
                 meanR += p.r;
                 meanG += p.g;
@@ -98,7 +99,7 @@ float calculateMAD(const Image& image, int x, int y, int width, int height) {
         }
     }
 
-    return madR + madG + madB; // Sum of MAD for RGB
+    return ((madR  / totalPixels + madG / totalPixels + madB / totalPixels) / 3); // Sum of MAD for RGB
 }
 
 // Dummy function to calculate Max Pixel Difference
@@ -134,14 +135,59 @@ float calculateMaxPixelDifference(const Image& image, int x, int y, int width, i
         }
     }
 
-    return (maxR - minR) + (maxG - minG) + (maxB - minB); 
+    return ((maxR - minR) + (maxG - minG) + (maxB - minB) / 3 ); 
+}
+
+
+float calculateEntropy(const Image& image, int x, int y, int width, int height) {
+    // Histogram untuk kanal R, G, dan B
+    std::unordered_map<int, int> histogramR, histogramG, histogramB;
+    int totalPixels = 0;
+
+    // Loop melalui setiap piksel dalam blok
+    for (int i = y; i < y + height; ++i) {
+        for (int j = x; j < x + width; ++j) {
+            try {
+                // Ambil data piksel
+                Pixel p = image.getPixel(i, j);
+                // Tambahkan nilai ke histogram masing-masing kanal
+                histogramR[p.r]++;
+                histogramG[p.g]++;
+                histogramB[p.b]++;
+                totalPixels++;
+            } catch (const std::out_of_range& oor) {
+                std::cerr << "Error: Out of range access in calculateEntropy at (" << i << ", " << j << "): " << oor.what() << std::endl;
+                return std::numeric_limits<float>::infinity();
+            }
+        }
+    }
+
+    // Fungsi untuk menghitung entropi untuk satu kanal
+    auto calculateChannelEntropy = [&](const std::unordered_map<int, int>& histogram) -> float {
+        float entropy = 0.0f;
+        for (const auto& [value, count] : histogram) {
+            float probability = static_cast<float>(count) / totalPixels;
+            if (probability > 0) {
+                entropy -= probability * log2(probability);
+            }
+        }
+        return entropy;
+    };
+
+    // Hitung entropi untuk kanal R, G, dan B
+    float entropyR = calculateChannelEntropy(histogramR);
+    float entropyG = calculateChannelEntropy(histogramG);
+    float entropyB = calculateChannelEntropy(histogramB);
+
+    // Rata-rata entropi dari ketiga kanal
+    return (entropyR + entropyG + entropyB) / 3.0f;
 }
 
 // Fungsi untuk membagi blok menggunakan metode variansi
 void divideBlockVariance(const Image& image, QuadTreeNode* node, float threshold, int minBlockSize) {
     float error = calculateVariance(image, node->x, node->y, node->width, node->height);
     
-    if (error > threshold && node->width * node->height > minBlockSize) {
+    if (error > threshold && (node->width * node->height) / 4  > minBlockSize) {
         int halfWidth = node->width / 2;
         int halfHeight = node->height / 2;
 
@@ -163,7 +209,7 @@ void divideBlockVariance(const Image& image, QuadTreeNode* node, float threshold
 void divideBlockMAD(const Image& image, QuadTreeNode* node, float threshold, int minBlockSize) {
     float error = calculateMAD(image, node->x, node->y, node->width, node->height);
     
-    if (error > threshold && node->width * node->height > minBlockSize) {
+    if (error > threshold && (node->width * node->height) / 4  > minBlockSize) {
         int halfWidth = node->width / 2;
         int halfHeight = node->height / 2;
 
@@ -185,7 +231,7 @@ void divideBlockMAD(const Image& image, QuadTreeNode* node, float threshold, int
 void divideBlockMaxPixelDifference(const Image& image, QuadTreeNode* node, float threshold, int minBlockSize) {
     float error = calculateMaxPixelDifference(image, node->x, node->y, node->width, node->height);
     
-    if (error > threshold && node->width * node->height > minBlockSize) {
+    if (error > threshold && (node->width * node->height) / 4 > minBlockSize) {
         int halfWidth = node->width / 2;
         int halfHeight = node->height / 2;
 
@@ -203,6 +249,27 @@ void divideBlockMaxPixelDifference(const Image& image, QuadTreeNode* node, float
     }
 }
 
+void divideBlockEntropy(const Image& image, QuadTreeNode* node, float threshold, int minBlockSize){
+    float error = calculateEntropy(image, node->x, node->y, node->width, node->height);
+    
+    if (error > threshold && (node->width * node->height) / 4  > minBlockSize) {
+        int halfWidth = node->width / 2;
+        int halfHeight = node->height / 2;
+
+        node->isLeaf = false;
+
+        node->children[0] = new QuadTreeNode(node->x, node->y, halfWidth, halfHeight);
+        node->children[1] = new QuadTreeNode(node->x + halfWidth, node->y, halfWidth, halfHeight);
+        node->children[2] = new QuadTreeNode(node->x, node->y + halfHeight, halfWidth, halfHeight);
+        node->children[3] = new QuadTreeNode(node->x + halfWidth, node->y + halfHeight, halfWidth, halfHeight);
+
+        divideBlockEntropy(image, node->children[0], threshold, minBlockSize);
+        divideBlockEntropy(image, node->children[1], threshold, minBlockSize);
+        divideBlockEntropy(image, node->children[2], threshold, minBlockSize);
+        divideBlockEntropy(image, node->children[3], threshold, minBlockSize);
+    }
+}
+
 // Fungsi utama untuk memilih metode perhitungan error dan membagi blok gambar
 void divideBlock(const Image& image, QuadTreeNode* node, float threshold, int minBlockSize, int methodChoice) {
     if (methodChoice == 1) {
@@ -216,6 +283,9 @@ void divideBlock(const Image& image, QuadTreeNode* node, float threshold, int mi
     else if (methodChoice == 3) {
         // Menggunakan Max Pixel Difference
         divideBlockMaxPixelDifference(image, node, threshold, minBlockSize);
+    }
+    else if (methodChoice == 4){
+        divideBlockEntropy(image, node, threshold, minBlockSize);
     }
 }
 
