@@ -1,306 +1,430 @@
 #include "QuadTree.h"
-#include <cmath>
-#include <algorithm>
-#include <limits>
+#include <cmath>        // Untuk std::pow, std::abs, std::log2
 #include <vector>
-#include <stdexcept>
-#include <unordered_map>
-using namespace std;
+#include <numeric>      // Opsional: Untuk std::accumulate
+#include <limits>       // Untuk std::numeric_limits
+#include <stdexcept>    // Untuk std::runtime_error, std::out_of_range, std::invalid_argument
+#include <iostream>     // Untuk std::cerr
+#include <algorithm>    // Untuk std::max, std::min
+#include <array>        // Untuk std::array
+#include <unordered_map>// Untuk std::unordered_map (di Entropy)
 
+// --- Implementasi Kelas QuadTreeNode ---
 
-// Dummy function to calculate variance
-float calculateVariance(const Image& image, int x, int y, int width, int height) {
-    float meanR = 0, meanG = 0, meanB = 0;
-    float varianceR = 0, varianceG = 0, varianceB = 0;
+// Konstruktor QuadTreeNode
+QuadTreeNode::QuadTreeNode(int x, int y, int width, int height, const Image& image)
+    : x(x), y(y), width(width), height(height), leaf(true), sourceImage(image), children({}) // Inisialisasi children
+{
+    if (width <= 0 || height <= 0) {
+        // Seharusnya tidak terjadi jika logika buildRecursive benar, tapi sebagai pengaman
+        throw std::invalid_argument("Node dimensions must be positive.");
+    }
+    // Hitung warna rata-rata saat node dibuat (berguna untuk leaf node nantinya)
+    try {
+        averageColor = calculateAverageColor();
+    } catch (const std::exception& e) {
+         // Tangani jika terjadi error saat kalkulasi awal (misal gambar error)
+         std::cerr << "Error calculating initial average color for node (" << x << "," << y << "): " << e.what() << std::endl;
+         averageColor = Pixel(0, 0, 0); // Set default jika gagal
+    }
+}
 
-    // Calculate mean for each color channel
+// Menghitung warna rata-rata untuk region node ini
+Pixel QuadTreeNode::calculateAverageColor() const {
+    if (width <= 0 || height <= 0) {
+        return Pixel(0, 0, 0);
+    }
+
+    long long sumR = 0, sumG = 0, sumB = 0;
+    long long count = 0; // Gunakan long long untuk menghindari overflow pada gambar besar
+
     for (int i = y; i < y + height; ++i) {
         for (int j = x; j < x + width; ++j) {
             try {
-                Pixel p = image.getPixel(i, j);
-                meanR += p.r;
-                meanG += p.g;
-                meanB += p.b;
+                // Periksa batas gambar sumber secara eksplisit (lebih aman)
+                if (i >= 0 && i < sourceImage.getHeight() && j >= 0 && j < sourceImage.getWidth()) {
+                    Pixel p = sourceImage.getPixel(i, j);
+                    sumR += p.r;
+                    sumG += p.g;
+                    sumB += p.b;
+                    count++;
+                } else {
+                     std::cerr << "Warning: Skipping pixel outside source image bounds during average calculation (" << j << ", " << i << ")\n";
+                }
             } catch (const std::out_of_range& oor) {
-                // Pengaman
-                std::cerr << "Error: Out of range access inside calculateVariance at (" << i << ", " << j << "): " << oor.what() << std::endl;
-                return std::numeric_limits<float>::infinity(); // Error -> anggap variansi tinggi
+                // Tangani jika getPixel melempar exception (seharusnya sudah dicek batasnya)
+                 std::cerr << "Warning: Out of range access in calculateAverageColor at (" << j << ", " << i << "): " << oor.what() << std::endl;
             }
         }
     }
 
-    int totalPixels = width * height;
+    if (count == 0) {
+        std::cerr << "Warning: No valid pixels found to calculate average color for node (" << x << "," << y << " " << width << "x" << height << "). Returning black.\n";
+        return Pixel(0, 0, 0);
+    }
+
+    // Lakukan pembulatan standar (tambah setengah sebelum pembagian integer)
+    unsigned char avgR = static_cast<unsigned char>((sumR + count / 2) / count);
+    unsigned char avgG = static_cast<unsigned char>((sumG + count / 2) / count);
+    unsigned char avgB = static_cast<unsigned char>((sumB + count / 2) / count);
+
+    return Pixel(avgR, avgG, avgB);
+}
+
+// Memilih dan memanggil fungsi perhitungan error yang sesuai
+double QuadTreeNode::calculateError(ErrorMetric metric) const {
+     // Fungsi ini sekarang hanya memanggil implementasi internal statis
+     // Penanganan error (seperti out_of_range) sebaiknya ada di dalam fungsi internal
+     try {
+        switch (metric) {
+            case ErrorMetric::VARIANCE:
+                return calculateVarianceInternal(sourceImage, x, y, width, height);
+            case ErrorMetric::MAD:
+                return calculateMADInternal(sourceImage, x, y, width, height);
+            case ErrorMetric::MAX_PIXEL_DIFFERENCE:
+                return calculateMaxPixelDifferenceInternal(sourceImage, x, y, width, height);
+             case ErrorMetric::ENTROPY:
+                return calculateEntropyInternal(sourceImage, x, y, width, height);
+            default:
+                 // Seharusnya tidak terjadi jika input divalidasi
+                throw std::runtime_error("Unsupported error metric selected.");
+        }
+    } catch (const std::exception& e) {
+        // Menangkap error dari fungsi internal jika ada
+        std::cerr << "Exception during error calculation for node (" << x << "," << y << " " << width << "x" << height << "): " << e.what() << std::endl;
+        return std::numeric_limits<double>::infinity(); // Kembalikan error tinggi
+    }
+}
+
+// Implementasi fungsi perhitungan error internal (statis)
+double QuadTreeNode::calculateVarianceInternal(const Image& img, int x, int y, int w, int h) {
+    if (w <= 0 || h <= 0) return 0.0;
+    long long totalPixels = static_cast<long long>(w) * h;
+    if (totalPixels == 0) return 0.0;
+
+    double meanR = 0, meanG = 0, meanB = 0;
+    // Hitung mean
+    for (int i = y; i < y + h; ++i) {
+        for (int j = x; j < x + w; ++j) {
+             // Asumsi getPixel akan throw jika out of range
+            Pixel p = img.getPixel(i, j);
+            meanR += p.r;
+            meanG += p.g;
+            meanB += p.b;
+        }
+    }
     meanR /= totalPixels;
     meanG /= totalPixels;
     meanB /= totalPixels;
 
-    // Calculate variance for each color channel
-    for (int i = y; i < y + height; ++i) {
-        for (int j = x; j < x + width; ++j) {
-            try {
-                Pixel p = image.getPixel(i, j); 
-                varianceR += pow(p.r - meanR, 2);
-                varianceG += pow(p.g - meanG, 2);
-                varianceB += pow(p.b - meanB, 2);
-            } catch (const std::out_of_range& oor) {
-                // Pengaman
-                std::cerr << "Error: Out of range access inside calculateVariance at (" << i << ", " << j << "): " << oor.what() << std::endl;
-                return std::numeric_limits<float>::infinity(); // Error -> anggap variansi sangat tinggi
-            }
+    double varianceR = 0, varianceG = 0, varianceB = 0;
+    // Hitung variance
+    for (int i = y; i < y + h; ++i) {
+        for (int j = x; j < x + w; ++j) {
+            Pixel p = img.getPixel(i, j);
+            varianceR += std::pow(p.r - meanR, 2);
+            varianceG += std::pow(p.g - meanG, 2);
+            varianceB += std::pow(p.b - meanB, 2);
         }
     }
-
-    return ((varianceR / totalPixels + varianceG / totalPixels + varianceB / totalPixels)/3); // Sum of variances for RGB
+    // PDF meminta rata-rata variance
+    return ((varianceR / totalPixels) + (varianceG / totalPixels) + (varianceB / totalPixels)) / 3.0;
 }
 
-// Dummy function to calculate MAD (Mean Absolute Deviation)
-float calculateMAD(const Image& image, int x, int y, int width, int height) {
-    float meanR = 0, meanG = 0, meanB = 0;
-    float madR = 0, madG = 0, madB = 0;
+double QuadTreeNode::calculateMADInternal(const Image& img, int x, int y, int w, int h) {
+    if (w <= 0 || h <= 0) return 0.0;
+    long long totalPixels = static_cast<long long>(w) * h;
+     if (totalPixels == 0) return 0.0;
 
-    // int counter = 0
-    // Calculate mean for each color channel
-    for (int i = y; i < y + height; ++i) {
-        for (int j = x; j < x + width; ++j) {
-            try {
-
-                Pixel p = image.getPixel(i, j); 
-                meanR += p.r;
-                meanG += p.g;
-                meanB += p.b;
-            } catch (const std::out_of_range& oor) {
-                std::cerr << "Error: Out of range access inside calculateVariance at (" << i << ", " << j << "): " << oor.what() << std::endl;
-                return std::numeric_limits<float>::infinity();
-            }
+    double meanR = 0, meanG = 0, meanB = 0;
+    // Hitung mean
+    for (int i = y; i < y + h; ++i) {
+        for (int j = x; j < x + w; ++j) {
+             Pixel p = img.getPixel(i, j);
+             meanR += p.r;
+             meanG += p.g;
+             meanB += p.b;
         }
     }
-
-    int totalPixels = width * height;
     meanR /= totalPixels;
     meanG /= totalPixels;
     meanB /= totalPixels;
 
-    // Calculate MAD for each color channel
-    for (int i = y; i < y + height; ++i) {
-        for (int j = x; j < x + width; ++j) {
-            // int index = i * width + j;
-            // madR += abs(pixelData[index].r - meanR);
-            // madG += abs(pixelData[index].g - meanG);
-            // madB += abs(pixelData[index].b - meanB);
-            try {
-                Pixel p = image.getPixel(i, j);
-                madR += abs(p.r - meanR);
-                madG += abs(p.g - meanG);
-                madB += abs(p.b - meanB);
-            } catch (const std::out_of_range& oor) {
-                std::cerr << "Error: Out of range access inside calculateVariance at (" << i << ", " << j << "): " << oor.what() << std::endl;
-                return std::numeric_limits<float>::infinity(); // Error -> anggap variansi sangat tinggi
-            }
+    double madR = 0, madG = 0, madB = 0;
+    // Hitung MAD
+     for (int i = y; i < y + h; ++i) {
+        for (int j = x; j < x + w; ++j) {
+            Pixel p = img.getPixel(i, j);
+            madR += std::abs(p.r - meanR);
+            madG += std::abs(p.g - meanG);
+            madB += std::abs(p.b - meanB);
         }
     }
-
-    return ((madR  / totalPixels + madG / totalPixels + madB / totalPixels) / 3); // Sum of MAD for RGB
+    // PDF meminta rata-rata MAD
+    return ((madR / totalPixels) + (madG / totalPixels) + (madB / totalPixels)) / 3.0;
 }
 
-// Dummy function to calculate Max Pixel Difference
-float calculateMaxPixelDifference(const Image& image, int x, int y, int width, int height) {
-    int maxR = 0, maxG = 0, maxB = 0;
+double QuadTreeNode::calculateMaxPixelDifferenceInternal(const Image& img, int x, int y, int w, int h) {
+     if (w <= 0 || h <= 0) return 0.0;
+
     int minR = 255, minG = 255, minB = 255;
+    int maxR = 0, maxG = 0, maxB = 0;
+    bool firstPixel = true;
 
-    // Find the max and min values for each color channel
-    for (int i = y; i < y + height; ++i) {
-        for (int j = x; j < x + width; ++j) {
-            // int index = i * width + j;
-            // maxR = max(maxR, static_cast<int>(pixelData[index].r));
-            // maxG = max(maxG, static_cast<int>(pixelData[index].g));
-            // maxB = max(maxB, static_cast<int>(pixelData[index].b));
-            
-            // minR = min(minR, static_cast<int>(pixelData[index].r));
-            // minG = min(minG, static_cast<int>(pixelData[index].g));
-            // minB = min(minB, static_cast<int>(pixelData[index].b));
-            try {
-                Pixel p = image.getPixel(i, j);
-                maxR = max(maxR, static_cast<int>(p.r));
-                maxG = max(maxG, static_cast<int>(p.g));
-                maxB = max(maxB, static_cast<int>(p.b));
-                
-                minR = min(minR, static_cast<int>(p.r));
-                minG = min(minG, static_cast<int>(p.g));
-                minB = min(minB, static_cast<int>(p.b));
-            } catch (const std::out_of_range& oor) {
-                std::cerr << "Error: Out of range access inside calculateVariance at (" << i << ", " << j << "): " << oor.what() << std::endl;
-                return std::numeric_limits<float>::infinity();
-            }
-
-        }
-    }
-
-    return ((maxR - minR) + (maxG - minG) + (maxB - minB) / 3 ); 
-}
-
-
-float calculateEntropy(const Image& image, int x, int y, int width, int height) {
-    // Histogram untuk kanal R, G, dan B
-    std::unordered_map<int, int> histogramR, histogramG, histogramB;
-    int totalPixels = 0;
-
-    // Loop melalui setiap piksel dalam blok
-    for (int i = y; i < y + height; ++i) {
-        for (int j = x; j < x + width; ++j) {
-            try {
-                // Ambil data piksel
-                Pixel p = image.getPixel(i, j);
-                // Tambahkan nilai ke histogram masing-masing kanal
-                histogramR[p.r]++;
-                histogramG[p.g]++;
-                histogramB[p.b]++;
-                totalPixels++;
-            } catch (const std::out_of_range& oor) {
-                std::cerr << "Error: Out of range access in calculateEntropy at (" << i << ", " << j << "): " << oor.what() << std::endl;
-                return std::numeric_limits<float>::infinity();
+    for (int i = y; i < y + h; ++i) {
+        for (int j = x; j < x + w; ++j) {
+            Pixel p = img.getPixel(i, j);
+            if (firstPixel) {
+                minR = maxR = p.r;
+                minG = maxG = p.g;
+                minB = maxB = p.b;
+                firstPixel = false;
+            } else {
+                minR = std::min(minR, static_cast<int>(p.r));
+                minG = std::min(minG, static_cast<int>(p.g));
+                minB = std::min(minB, static_cast<int>(p.b));
+                maxR = std::max(maxR, static_cast<int>(p.r));
+                maxG = std::max(maxG, static_cast<int>(p.g));
+                maxB = std::max(maxB, static_cast<int>(p.b));
             }
         }
     }
+    if(firstPixel) return 0.0; // Tidak ada piksel valid
+    // PDF meminta rata-rata perbedaan
+    return static_cast<double>((maxR - minR) + (maxG - minG) + (maxB - minB)) / 3.0;
+}
 
-    // Fungsi untuk menghitung entropi untuk satu kanal
-    auto calculateChannelEntropy = [&](const std::unordered_map<int, int>& histogram) -> float {
-        float entropy = 0.0f;
-        for (const auto& [value, count] : histogram) {
-            float probability = static_cast<float>(count) / totalPixels;
-            if (probability > 0) {
-                entropy -= probability * log2(probability);
-            }
+double QuadTreeNode::calculateEntropyInternal(const Image& img, int x, int y, int w, int h) {
+    if (w <= 0 || h <= 0) return 0.0;
+    long long totalPixels = static_cast<long long>(w) * h;
+    if (totalPixels == 0) return 0.0;
+
+    // Gunakan std::array untuk efisiensi
+    std::array<int, 256> freqR = {0}, freqG = {0}, freqB = {0};
+
+    for (int i = y; i < y + h; ++i) {
+        for (int j = x; j < x + w; ++j) {
+            // Asumsi getPixel akan throw jika out of range
+            Pixel p = img.getPixel(i, j);
+            freqR[p.r]++;
+            freqG[p.g]++;
+            freqB[p.b]++;
         }
-        return entropy;
-    };
+    }
 
-    // Hitung entropi untuk kanal R, G, dan B
-    float entropyR = calculateChannelEntropy(histogramR);
-    float entropyG = calculateChannelEntropy(histogramG);
-    float entropyB = calculateChannelEntropy(histogramB);
+    double entropyR = 0.0, entropyG = 0.0, entropyB = 0.0;
+    for (int k = 0; k < 256; ++k) {
+        if (freqR[k] > 0) {
+            double probR = static_cast<double>(freqR[k]) / totalPixels;
+            entropyR -= probR * std::log2(probR); // Gunakan std::log2
+        }
+         if (freqG[k] > 0) {
+            double probG = static_cast<double>(freqG[k]) / totalPixels;
+            entropyG -= probG * std::log2(probG);
+        }
+         if (freqB[k] > 0) {
+            double probB = static_cast<double>(freqB[k]) / totalPixels;
+            entropyB -= probB * std::log2(probB);
+        }
+    }
 
-    // Rata-rata entropi dari ketiga kanal
-    return (entropyR + entropyG + entropyB) / 3.0f;
+    // PDF meminta rata-rata entropy
+    return (entropyR + entropyG + entropyB) / 3.0;
 }
 
-// Fungsi untuk membagi blok menggunakan metode variansi
-void divideBlockVariance(const Image& image, QuadTreeNode* node, float threshold, int minBlockSize) {
-    float error = calculateVariance(image, node->x, node->y, node->width, node->height);
-    
-    if (error > threshold && (node->width * node->height) / 4  > minBlockSize) {
-        int halfWidth = node->width / 2;
-        int halfHeight = node->height / 2;
 
-        node->isLeaf = false;
-
-        node->children[0] = new QuadTreeNode(node->x, node->y, halfWidth, halfHeight);
-        node->children[1] = new QuadTreeNode(node->x + halfWidth, node->y, halfWidth, halfHeight);
-        node->children[2] = new QuadTreeNode(node->x, node->y + halfHeight, halfWidth, halfHeight);
-        node->children[3] = new QuadTreeNode(node->x + halfWidth, node->y + halfHeight, halfWidth, halfHeight);
-
-        divideBlockVariance(image, node->children[0], threshold, minBlockSize);
-        divideBlockVariance(image, node->children[1], threshold, minBlockSize);
-        divideBlockVariance(image, node->children[2], threshold, minBlockSize);
-        divideBlockVariance(image, node->children[3], threshold, minBlockSize);
-    }
-}
-
-// Fungsi untuk membagi blok menggunakan metode MAD (Mean Absolute Deviation)
-void divideBlockMAD(const Image& image, QuadTreeNode* node, float threshold, int minBlockSize) {
-    float error = calculateMAD(image, node->x, node->y, node->width, node->height);
-    
-    if (error > threshold && (node->width * node->height) / 4  > minBlockSize) {
-        int halfWidth = node->width / 2;
-        int halfHeight = node->height / 2;
-
-        node->isLeaf = false;
-
-        node->children[0] = new QuadTreeNode(node->x, node->y, halfWidth, halfHeight);
-        node->children[1] = new QuadTreeNode(node->x + halfWidth, node->y, halfWidth, halfHeight);
-        node->children[2] = new QuadTreeNode(node->x, node->y + halfHeight, halfWidth, halfHeight);
-        node->children[3] = new QuadTreeNode(node->x + halfWidth, node->y + halfHeight, halfWidth, halfHeight);
-
-        divideBlockMAD(image, node->children[0], threshold, minBlockSize);
-        divideBlockMAD(image, node->children[1], threshold, minBlockSize);
-        divideBlockMAD(image, node->children[2], threshold, minBlockSize);
-        divideBlockMAD(image, node->children[3], threshold, minBlockSize);
-    }
-}
-
-// Fungsi untuk membagi blok menggunakan metode Max Pixel Difference
-void divideBlockMaxPixelDifference(const Image& image, QuadTreeNode* node, float threshold, int minBlockSize) {
-    float error = calculateMaxPixelDifference(image, node->x, node->y, node->width, node->height);
-    
-    if (error > threshold && (node->width * node->height) / 4 > minBlockSize) {
-        int halfWidth = node->width / 2;
-        int halfHeight = node->height / 2;
-
-        node->isLeaf = false;
-
-        node->children[0] = new QuadTreeNode(node->x, node->y, halfWidth, halfHeight);
-        node->children[1] = new QuadTreeNode(node->x + halfWidth, node->y, halfWidth, halfHeight);
-        node->children[2] = new QuadTreeNode(node->x, node->y + halfHeight, halfWidth, halfHeight);
-        node->children[3] = new QuadTreeNode(node->x + halfWidth, node->y + halfHeight, halfWidth, halfHeight);
-
-        divideBlockMaxPixelDifference(image, node->children[0], threshold, minBlockSize);
-        divideBlockMaxPixelDifference(image, node->children[1], threshold, minBlockSize);
-        divideBlockMaxPixelDifference(image, node->children[2], threshold, minBlockSize);
-        divideBlockMaxPixelDifference(image, node->children[3], threshold, minBlockSize);
-    }
-}
-
-void divideBlockEntropy(const Image& image, QuadTreeNode* node, float threshold, int minBlockSize){
-    float error = calculateEntropy(image, node->x, node->y, node->width, node->height);
-    
-    if (error > threshold && (node->width * node->height) / 4  > minBlockSize) {
-        int halfWidth = node->width / 2;
-        int halfHeight = node->height / 2;
-
-        node->isLeaf = false;
-
-        node->children[0] = new QuadTreeNode(node->x, node->y, halfWidth, halfHeight);
-        node->children[1] = new QuadTreeNode(node->x + halfWidth, node->y, halfWidth, halfHeight);
-        node->children[2] = new QuadTreeNode(node->x, node->y + halfHeight, halfWidth, halfHeight);
-        node->children[3] = new QuadTreeNode(node->x + halfWidth, node->y + halfHeight, halfWidth, halfHeight);
-
-        divideBlockEntropy(image, node->children[0], threshold, minBlockSize);
-        divideBlockEntropy(image, node->children[1], threshold, minBlockSize);
-        divideBlockEntropy(image, node->children[2], threshold, minBlockSize);
-        divideBlockEntropy(image, node->children[3], threshold, minBlockSize);
-    }
-}
-
-// Fungsi utama untuk memilih metode perhitungan error dan membagi blok gambar
-void divideBlock(const Image& image, QuadTreeNode* node, float threshold, int minBlockSize, int methodChoice) {
-    if (methodChoice == 1) {
-        // Menggunakan Variance
-        divideBlockVariance(image, node, threshold, minBlockSize);
-    } 
-    else if (methodChoice == 2) {
-        // Menggunakan MAD
-        divideBlockMAD(image, node, threshold, minBlockSize);
-    } 
-    else if (methodChoice == 3) {
-        // Menggunakan Max Pixel Difference
-        divideBlockMaxPixelDifference(image, node, threshold, minBlockSize);
-    }
-    else if (methodChoice == 4){
-        divideBlockEntropy(image, node, threshold, minBlockSize);
-    }
-}
-
-// Fungsi untuk mengumpulkan semua node dalam QuadTree
-void collectNodes(QuadTreeNode* node, vector<QuadTreeNode*>& nodes) {
-    if (node != nullptr) {
-        nodes.push_back(node);  // Menyimpan node ke dalam vector
-        
-        if (!node->isLeaf) {
-            for (int i = 0; i < 4; ++i) {
-                collectNodes(node->children[i], nodes);  // Rekursi untuk setiap sub-blok
-            }
+// Mengumpulkan semua node secara rekursif
+void QuadTreeNode::collectNodes(std::vector<const QuadTreeNode*>& nodes) const {
+    nodes.push_back(this);
+    if (!leaf) {
+        for (int i = 0; i < 4; ++i) {
+             if (children[i]) { // Periksa apakah pointer valid
+                 children[i]->collectNodes(nodes);
+             }
         }
     }
 }
 
+// Mengisi region pada targetImage sesuai node ini (jika leaf) atau anak-anaknya
+void QuadTreeNode::reconstructRegion(Image& targetImage) const {
+    if (leaf) {
+        // Isi area persegi panjang pada targetImage dengan averageColor
+        int endY = std::min(y + height, targetImage.getHeight());
+        int endX = std::min(x + width, targetImage.getWidth());
+        int startY = std::max(y, 0);
+        int startX = std::max(x, 0);
+
+        for (int i = startY; i < endY; ++i) {
+            for (int j = startX; j < endX; ++j) {
+                 try {
+                    targetImage.setPixel(i, j, averageColor);
+                 } catch (const std::out_of_range&) {
+                     // Seharusnya tidak terjadi karena sudah dicek min/max
+                     std::cerr << "Warning: Reconstruction coordinate out of target bounds (" << j << ", " << i << ") despite checks.\n";
+                 }
+            }
+        }
+    } else {
+        // Panggil reconstructRegion secara rekursif untuk anak-anak
+        for (int i = 0; i < 4; ++i) {
+             if (children[i]) { // Periksa apakah pointer valid
+                 children[i]->reconstructRegion(targetImage);
+             }
+        }
+    }
+}
+
+// --- Implementasi Kelas Quadtree ---
+
+// Konstruktor Quadtree: membuat root node dan memulai pembangunan rekursif
+Quadtree::Quadtree(const Image& image, ErrorMetric metric, double threshold, int minSize)
+    : sourceImage(image),
+      imageWidth(image.getWidth()),
+      imageHeight(image.getHeight()),
+      errorMetricChoice(metric),
+      errorThreshold(threshold),
+      minimumBlockSize(std::max(1, minSize)), // Pastikan minSize minimal 1
+      nodeCount(0), // Inisialisasi nodeCount
+      maxDepth(0)     // Inisialisasi maxDepth
+{
+    if (image.isEmpty()) {
+        throw std::runtime_error("Cannot create Quadtree from an empty image.");
+    }
+    if (imageWidth <= 0 || imageHeight <= 0) {
+         throw std::runtime_error("Image dimensions must be positive.");
+    }
+
+    // Buat node akar
+    try {
+        rootNode = std::make_unique<QuadTreeNode>(0, 0, imageWidth, imageHeight, sourceImage);
+    } catch (const std::exception& e) {
+        throw std::runtime_error(std::string("Failed to create root node: ") + e.what());
+    }
 
 
+    // Mulai proses pembangunan rekursif dari root pada kedalaman 1
+    if(rootNode) {
+        buildRecursive(rootNode.get(), 1);
+    }
+
+    // Jika setelah build, nodeCount masih 0 (misal root gagal dibangun atau langsung jadi leaf tanpa dihitung), set minimal 1
+    if (nodeCount == 0 && rootNode) {
+        nodeCount = 1;
+        maxDepth = 1;
+    }
+}
+
+// Helper rekursif untuk membangun pohon dan menghitung metrik
+void Quadtree::buildRecursive(QuadTreeNode* node, int currentDepth) {
+    if (!node) {
+         std::cerr << "Error: buildRecursive called with null node." << std::endl;
+         return;
+    }
+
+    // 1. Update Metrik
+    this->nodeCount++;
+    this->maxDepth = std::max(this->maxDepth, currentDepth);
+
+    // 2. Kalkulasi Error & Cek Kondisi Subdivisi
+    // Hanya hitung error jika ukuran node memungkinkan untuk dibagi lebih lanjut
+    // dan belum mencapai batas minimum
+    double error = 0.0;
+    bool shouldCheckError = true;
+    bool canDividePhysically = (node->width > 1 || node->height > 1); // Bisa dibagi jika > 1x1
+    long long currentArea = static_cast<long long>(node->width) * node->height;
+    // Ukuran minimum dicek berdasarkan luas piksel
+    if (currentArea < this->minimumBlockSize || !canDividePhysically) {
+        shouldCheckError = false; // Tidak perlu cek error jika sudah terlalu kecil
+    }
+
+    if (shouldCheckError) {
+         try {
+            error = node->calculateError(this->errorMetricChoice);
+         } catch (const std::exception& e){
+             std::cerr << "Error calculating metric during buildRecursive: " << e.what() << std::endl;
+             // Anggap error tinggi agar tidak memproses lebih lanjut jika ada masalah
+             error = std::numeric_limits<double>::infinity();
+         }
+    }
+
+    // Cek kondisi untuk *tidak* membagi (menjadi leaf)
+    // Kondisi 1: Error di bawah atau sama dengan threshold
+    // Kondisi 2: Area saat ini sudah mencapai atau di bawah ukuran minimum
+    // Kondisi 3: Tidak bisa dibagi lagi secara fisik (misal 1xN atau Nx1 atau 1x1)
+    // Kondisi 4: Jika dibagi, ukuran anak akan < minimumBlockSize (cek ini dengan hati-hati)
+    // Area setelah dibagi 4 (perkiraan kasar, ukuran pasti tergantung ganjil/genap)
+    long long areaAfterDivideRough = (currentArea + 3) / 4; // Pembulatan ke atas sederhana
+
+    if (error <= this->errorThreshold || currentArea <= this->minimumBlockSize || !canDividePhysically || areaAfterDivideRough < this->minimumBlockSize) {
+        node->leaf = true;
+        // Warna rata-rata sudah dihitung di konstruktor Node.
+        return; // Node ini menjadi leaf
+    }
+
+    // 3. Lakukan Subdivisi jika bukan leaf
+    node->leaf = false;
+
+    int halfWidth = node->width / 2;
+    int halfHeight = node->height / 2;
+    // Handle dimensi ganjil: anak kedua/ketiga mendapat sisa piksel
+    int widthRem = node->width - halfWidth;
+    int heightRem = node->height - halfHeight;
+
+    // Pastikan dimensi anak tidak nol (penting jika width/height awal = 1)
+    if (halfWidth == 0 && widthRem == 0) widthRem = 1; // Jika width=1, anak kanan tetap perlu lebar min 1
+    if (halfHeight == 0 && heightRem == 0) heightRem = 1; // Jika height=1, anak bawah tetap perlu tinggi min 1
+
+    try {
+        // Buat anak-anak node
+        if (halfWidth > 0 && halfHeight > 0)
+            node->children[0] = std::make_unique<QuadTreeNode>(node->x, node->y, halfWidth, halfHeight, node->sourceImage);
+        if (widthRem > 0 && halfHeight > 0)
+            node->children[1] = std::make_unique<QuadTreeNode>(node->x + halfWidth, node->y, widthRem, halfHeight, node->sourceImage);
+        if (halfWidth > 0 && heightRem > 0)
+            node->children[2] = std::make_unique<QuadTreeNode>(node->x, node->y + halfHeight, halfWidth, heightRem, node->sourceImage);
+        if (widthRem > 0 && heightRem > 0)
+            node->children[3] = std::make_unique<QuadTreeNode>(node->x + halfWidth, node->y + halfHeight, widthRem, heightRem, node->sourceImage);
+
+        // Panggil rekursif untuk setiap anak pada kedalaman berikutnya
+        for (int i = 0; i < 4; ++i) {
+            if (node->children[i]) { // Hanya panggil jika anak berhasil dibuat
+                buildRecursive(node->children[i].get(), currentDepth + 1);
+            }
+        }
+    } catch (const std::exception& e) {
+         // Jika pembuatan anak gagal, jadikan node ini leaf saja
+         std::cerr << "Error creating child nodes for node (" << node->x << "," << node->y << "): " << e.what() << ". Making it a leaf." << std::endl;
+         node->leaf = true;
+         node->children = {}; // Hapus pointer anak yang mungkin sudah dibuat sebagian
+         // Kurangi nodeCount yang sudah ditambahkan di awal fungsi ini
+         // (Ini agak rumit, mungkin lebih baik tidak increment di awal jika bisa error)
+         // Alternatif: biarkan nodeCount >实际 node jika error, atau lakukan re-count jika perlu.
+         // Untuk sekarang, kita biarkan count-nya, tapi node ini jadi leaf.
+    }
+}
+
+// Merekonstruksi gambar dari Quadtree
+Image Quadtree::reconstructImage() const {
+    if (!rootNode) {
+        // Kembalikan gambar kosong jika tidak ada root
+        std::cerr << "Warning: reconstructImage called on uninitialized Quadtree. Returning empty image." << std::endl;
+        return Image(0, 0);
+    }
+    // Buat gambar baru dengan ukuran yang sama
+    Image reconstructed(imageWidth, imageHeight);
+    // Mulai rekonstruksi dari root
+    rootNode->reconstructRegion(reconstructed);
+    return reconstructed;
+}
+
+// Mengumpulkan semua node dalam pohon
+void Quadtree::getAllNodes(std::vector<const QuadTreeNode*>& nodes) const {
+    nodes.clear();
+     if (rootNode) {
+        rootNode->collectNodes(nodes);
+     }
+}
+
+// Implementasi getter inline (biasanya di .h, tapi bisa juga di sini)
+// int Quadtree::getDepth() const { return maxDepth; }
+// size_t Quadtree::getNodeCount() const { return nodeCount; }
