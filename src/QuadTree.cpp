@@ -83,8 +83,10 @@ double QuadTreeNode::calculateError(ErrorMetric metric) const {
                 return calculateMADInternal(sourceImage, x, y, width, height);
             case ErrorMetric::MAX_PIXEL_DIFFERENCE:
                 return calculateMaxPixelDifferenceInternal(sourceImage, x, y, width, height);
-             case ErrorMetric::ENTROPY:
+            case ErrorMetric::ENTROPY:
                 return calculateEntropyInternal(sourceImage, x, y, width, height);
+            case ErrorMetric::SSIM:
+                return calculateSSIMInternal(sourceImage, x, y, width, height);
             default:
                  // Seharusnya tidak terjadi jika input divalidasi
                 throw std::runtime_error("Unsupported error metric selected.");
@@ -231,6 +233,97 @@ double QuadTreeNode::calculateEntropyInternal(const Image& img, int x, int y, in
     // PDF meminta rata-rata entropy
     return (entropyR + entropyG + entropyB) / 3.0;
 }
+
+double QuadTreeNode::calculateSSIMInternal(const Image& img, int x, int y, int w, int h) const {
+    if (w <= 0 || h <= 0) return 1.0;
+    long long totalPixels = static_cast<long long>(w) * h;
+    if (totalPixels == 0) return 1.0;
+
+    // Constants untuk SSIM
+    const double K1 = 0.01;
+    const double K2 = 0.03;
+    const int L = 255;
+    const double C1 = (K1 * L) * (K1 * L);
+    const double C2 = (K2 * L) * (K2 * L);
+
+    // Hitung mean untuk patch asli
+    double meanOrigR = 0, meanOrigG = 0, meanOrigB = 0;
+    for (int i = y; i < y + h; ++i) {
+        for (int j = x; j < x + w; ++j) {
+            Pixel p = img.getPixel(i, j);
+            meanOrigR += p.r;
+            meanOrigG += p.g;
+            meanOrigB += p.b;
+        }
+    }
+    meanOrigR /= totalPixels;
+    meanOrigG /= totalPixels;
+    meanOrigB /= totalPixels;
+
+    // mean dari patch kompresi (pakai averageColor)
+    double meanCompR = averageColor.r;
+    double meanCompG = averageColor.g;
+    double meanCompB = averageColor.b;
+
+    // Hitung variansi dan kovarians
+    double varOrigR = 0, varOrigG = 0, varOrigB = 0;
+    double varCompR = 0, varCompG = 0, varCompB = 0;
+    double covR = 0, covG = 0, covB = 0;
+
+    for (int i = y; i < y + h; ++i) {
+        for (int j = x; j < x + w; ++j) {
+            Pixel p = img.getPixel(i, j);
+
+            double diffOrigR = p.r - meanOrigR;
+            double diffOrigG = p.g - meanOrigG;
+            double diffOrigB = p.b - meanOrigB;
+
+            double diffCompR = averageColor.r - meanCompR;
+            double diffCompG = averageColor.g - meanCompG;
+            double diffCompB = averageColor.b - meanCompB;
+
+            varOrigR += diffOrigR * diffOrigR;
+            varOrigG += diffOrigG * diffOrigG;
+            varOrigB += diffOrigB * diffOrigB;
+
+            varCompR += diffCompR * diffCompR;
+            varCompG += diffCompG * diffCompG;
+            varCompB += diffCompB * diffCompB;
+
+            covR += diffOrigR * diffCompR;
+            covG += diffOrigG * diffCompG;
+            covB += diffOrigB * diffCompB;
+        }
+    }
+
+    varOrigR /= totalPixels;
+    varOrigG /= totalPixels;
+    varOrigB /= totalPixels;
+
+    varCompR /= totalPixels;
+    varCompG /= totalPixels;
+    varCompB /= totalPixels;
+
+    covR /= totalPixels;
+    covG /= totalPixels;
+    covB /= totalPixels;
+
+    // Hitung SSIM untuk masing-masing channel
+    double ssimR = ((2 * meanOrigR * meanCompR + C1) * (2 * covR + C2)) /
+                   ((meanOrigR * meanOrigR + meanCompR * meanCompR + C1) * (varOrigR + varCompR + C2));
+
+    double ssimG = ((2 * meanOrigG * meanCompG + C1) * (2 * covG + C2)) /
+                   ((meanOrigG * meanOrigG + meanCompG * meanCompG + C1) * (varOrigG + varCompG + C2));
+
+    double ssimB = ((2 * meanOrigB * meanCompB + C1) * (2 * covB + C2)) /
+                   ((meanOrigB * meanOrigB + meanCompB * meanCompB + C1) * (varOrigB + varCompB + C2));
+
+    // Rata-rata SSIM semua channel
+    double avgSSIM = (ssimR + ssimG + ssimB) / 3.0;
+
+    return 1.0 - avgSSIM; // error = 1 - SSIM
+}
+
 
 
 // Mengumpulkan semua node secara rekursif

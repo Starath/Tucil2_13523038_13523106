@@ -17,7 +17,8 @@ enum class ErrorMetric {
     VARIANCE,
     MAD, // Mean Absolute Deviation
     MAX_PIXEL_DIFFERENCE,
-    ENTROPY
+    ENTROPY,
+    SSIM
     // Bisa ditambahkan SSIM jika diperlukan
 };
 
@@ -43,6 +44,7 @@ private:
     static double calculateMADInternal(const Image& img, int x, int y, int w, int h);
     static double calculateMaxPixelDifferenceInternal(const Image& img, int x, int y, int w, int h);
     static double calculateEntropyInternal(const Image& img, int x, int y, int w, int h);
+    double calculateSSIMInternal(const Image& img, int x, int y, int w, int h) const;
 
     // Memberikan akses ke Quadtree (khususnya buildRecursive) untuk memodifikasi state internal
     // seperti 'leaf' dan 'children', serta memanggil 'calculateError'.
