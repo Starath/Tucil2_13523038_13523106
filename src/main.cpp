@@ -1,77 +1,112 @@
 #include "QuadTree.h"
 #include "Image.h"
 #include <iostream>
+#include <fstream>
 #include <vector>
 #include <string>
+#include <chrono> 
 
-int main() {
-    std::cout << "Starting Image Class Test Driver..." << std::endl;
+// 1. [INPUT] alamat absolut gambar yang akan dikompresi.
+// 2. [INPUT] metode perhitungan error (gunakan penomoran sebagai input).
+// 3. [INPUT] ambang batas (pastikan range nilai sesuai dengan metode yang dipilih).
+// 4. [INPUT] ukuran blok minimum.
+// 5. [INPUT] Target persentase kompresi (floating number, 1.0 = 100%), beri nilai 0 jika ingin menonaktifkan mode ini, jika mode ini aktif maka nilai threshold bisa menyesuaikan secara otomatis untuk memenuhi target persentase kompresi (bonus).
+// 6. [INPUT] alamat absolut gambar hasil kompresi.
+// 7. [INPUT] alamat absolut gif (bonus).
+// 8. [OUTPUT] waktu eksekusi.
+// 9. [OUTPUT] ukuran gambar sebelum.
+// 10. [OUTPUT] ukuran gambar setelah.
+// 11. [OUTPUT] persentase kompresi.
+// 12. [OUTPUT] kedalaman pohon.
+// 13. [OUTPUT] banyak simpul pada pohon.
+// 14. [OUTPUT] gambar hasil kompresi pada alamat yang sudah ditentukan.
+// 15. [OUTPUT] GIF proses kompresi pada alamat yang sudah ditentukan (bonus).
+using namespace std;
 
-    // Langkah 1: Meminta input metode perhitungan
+int main(){
+    string inputFilename, outputfilePath;
+    Image queryImg, resultImg;
     int methodChoice;
-    std::cout << "Pilih metode kompresi gambar:\n";
-    std::cout << "1. Variance\n2. Threshold Variance\n3. Minimum Block Size\n";
-    std::cin >> methodChoice;
+    double inputSize, resultSize;
+    float threshold = 0;
+    int minBlockSize = 0;
 
-    // Variabel untuk menyimpan parameter
-    float threshold = 0;        // Threshold untuk variansi
-    int minBlockSize = 0;      // Ukuran minimum blok
-
-    // Langkah 2: Menanyakan parameter sesuai pilihan metode
-    if (methodChoice == 1) {
-        // Jika memilih Variance, kita butuh threshold variansi dan ukuran minimum blok
-        std::cout << "Masukkan threshold variansi (nilai ambang batas): ";
-        std::cin >> threshold;
-
-        std::cout << "Masukkan ukuran minimum blok: ";
-        std::cin >> minBlockSize;
-    }
-    else if (methodChoice == 2) {
-        // Jika memilih Threshold Variance, hanya butuh threshold
-        std::cout << "Masukkan threshold variansi (nilai ambang batas): ";
-        std::cin >> threshold;
-    }
-    else if (methodChoice == 3) {
-        // Jika memilih Ukuran Minimum Blok, hanya butuh ukuran minimum blok
-        std::cout << "Masukkan ukuran minimum blok: ";
-        std::cin >> minBlockSize;
-    }
-
-    // --- Test Memuat Gambar --- 
-    std::string inputFilename = "xiao.png";  // Pastikan ada file ini
-    Image testImg;
+    // Load Gambar
+    cout << "Masukkan Alamat Gambar (ex : image.png / image.jpg) : ";
+    cin >> inputFilename;
+    cout << "File Gambar Yang Akan di Proses : " << inputFilename << endl;
     try {
-        testImg = Image::loadFromFile(inputFilename); // Gunakan factory method
-        std::cout << "PASS: loadFromFile successful for '" << inputFilename << "' (" << testImg.getWidth() << "x" << testImg.getHeight() << ")" << std::endl;
-    } catch (const ImageError& e) {
-        std::cout << "FAIL: loadFromFile failed: " << e.what() << std::endl;
-        return -1;  // Keluar jika gambar gagal dimuat
+        queryImg = Image::loadFromFile (inputFilename);
+        cout << "File Berhasil di Load!!" << endl;
+    }
+    catch (const ImageError& e){
+        cout << "Gagal, Gambar tidak valid / tidak di temukan "<< endl << e.what() << endl;
+        return -1;
     }
 
-    // --- Membuat QuadTree dan Membagi Blok --- 
-    int width = testImg.getWidth();
-    int height = testImg.getHeight();
+    // Input
+    cout << "Pilih Metode Perhitungan Error : " << endl;
+    cout << "1. Variance" << endl;
+    cout << "2. Mean Absolute Deviation (MAD)" << endl;
+    cout << "3. Max Pixel Difference" << endl;
+    cout << "4. Entropy" << endl;
+    cout << "Pilih (1/2/3/4) : ";
+    cin >> methodChoice; 
 
-    // Membuat root node untuk QuadTree
-    QuadTreeNode* rootNode = new QuadTreeNode(0, 0, width, height);
-
-    // Panggil divideBlock untuk membangun QuadTree sesuai dengan pilihan metode
-    divideBlock(testImg, rootNode, threshold, minBlockSize, methodChoice);
     
-    std::cout << "Proses pembagian blok dengan metode " << methodChoice << " selesai!" << std::endl;
+    cout << "Masukkan ambang batas (threshold variansi) : ";
+    cin >> threshold;
+    cout << "Masukkan ukuran minimum Blok: ";
+    cin >> minBlockSize;
+    cout << "Masukan Alamat Gambar Hasil Kompresi : ";
+    cin >> outputfilePath;
 
-    // Tes dan cetak hasil divideBlock
-    std::vector<QuadTreeNode*> nodes;
-    collectNodes(rootNode, nodes);  // Fungsi untuk mengumpulkan semua node QuadTree
-
-    std::cout << "Total nodes terbentuk: " << nodes.size() << std::endl;
-
-    // Menampilkan informasi dari beberapa node pertama sebagai tes
-    for (size_t i = nodes.size() - 1; i > nodes.size() - 6; --i) {
-        std::cout << "Node " << i << " -> Position: (" << nodes[i]->x << ", " << nodes[i]->y 
-                  << "), Size: (" << nodes[i]->width << "x" << nodes[i]->height 
-                  << "), Leaf: " << (nodes[i]->isLeaf ? "Yes" : "No") << std::endl;
+    // proses kompresi
+    ErrorMetric metric;
+    if (methodChoice == 1){
+        metric = ErrorMetric::VARIANCE;
     }
+    else if(methodChoice == 2){
+        metric = ErrorMetric::MAD;
+    }
+    else if(methodChoice == 3){
+        metric = ErrorMetric::MAX_PIXEL_DIFFERENCE;
+    }
+    else if(methodChoice == 4){
+        metric = ErrorMetric::ENTROPY;
+    }
+    else {
+        cout << "Input Pilihan Tidak Valid!" << endl;
+        return -1;
+    }
+
+    auto startTime = chrono::high_resolution_clock::now();
+
+    Quadtree qt(queryImg, metric, threshold, minBlockSize);
+    
+    resultImg = qt.reconstructImage();
+
+    resultImg.saveImage(outputfilePath);
+
+    auto endTime = chrono::high_resolution_clock::now();
+    chrono::duration<double, milli> execTime = endTime - startTime; // dalam ms
+
+    ifstream fileInputSize(inputFilename, ios::binary | ios::ate);
+    inputSize = static_cast<size_t>(fileInputSize.tellg()) / 1024.0;
+
+    ifstream file(outputfilePath, ios::binary | ios::ate);
+    resultSize = static_cast<size_t>(file.tellg()) / 1024.0;
+    
+    // output
+
+    cout << "Waktu Eksekusi : "<< execTime.count() <<" ms" << endl;
+    cout << "Ukuran Gambar sebelum : " << inputSize <<" KB" << endl;
+    cout << "Ukuran Gambar sesudah : " << resultSize <<" KB" << endl;
+    cout << "Persentase Kompresi : " << 100 - ((resultSize / inputSize) * 100) << "%" << endl;
+    cout << "Kedalaman Pohon : " << qt.getDepth() << endl;
+    cout << "Banyak simpul pada pohon : " << qt.getNodeCount() <<endl;
+    cout << "Gambar Berhasil Di Kompresi Pada Alamat : " << outputfilePath << endl;
+
 
     return 0;
 }
