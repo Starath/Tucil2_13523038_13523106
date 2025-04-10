@@ -2,6 +2,7 @@
 #include "Image.h"
 #include "GifCompressor.h"
 #include "MakeGif.h"
+#include "MakeFrame.h"  // Include MakeFrame untuk menggunakan fitur frame
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -19,7 +20,7 @@ int main() {
     int minBlockSize = 0;
 
     // Load Gambar
-    cout << "Masukkan Alamat Gambar (ex: image.png / image.jpg / image.gif) : ";
+    cout << "Masukkan Alamat Gambar (ex: image.png / image.jpg) : ";
     cin >> inputFilename;
     cout << "File Gambar Yang Akan di Proses : " << inputFilename << endl;
 
@@ -69,14 +70,24 @@ int main() {
 
     auto startTime = chrono::high_resolution_clock::now();
 
-    if (isGif) {
+    // Cek apakah output adalah file GIF
+    bool isOutputGif = (outputfilePath.size() >= 4 && outputfilePath.substr(outputfilePath.size() - 4) == ".gif");
+
+    if (isOutputGif) {
         try {
-            cout << "Input adalah GIF, memproses multi-frame..." << endl;
-            GifCompressor::compressGif(inputFilename, outputfilePath, metric, threshold, minBlockSize);
-            string outputGif = "hasil_kompres.gif";
-            MakeGif::create(outputfilePath, outputGif);
+            cout << "Output adalah GIF, membuat frame..." << endl;
+
+            // Gunakan MakeFrame untuk menghasilkan beberapa frame dan menyimpannya dalam folder
+            string outputFolderPath = "frames";  // Tentukan folder untuk menyimpan frame
+            MakeFrame::createFrames(inputFilename, outputFolderPath, threshold, minBlockSize, 10);
+
+            // Buat GIF dari frame yang telah dibuat
+            string outputGif = outputfilePath;
+            MakeGif::create(outputFolderPath, outputGif);
+            MakeFrame::deleteFramesFolder(outputFolderPath);
+            cout << "GIF berhasil dibuat: " << outputGif << endl;
         } catch (const std::exception& e) {
-            cerr << "Error saat kompres GIF: " << e.what() << endl;
+            cerr << "Error saat memproses GIF: " << e.what() << endl;
             return -1;
         }
     } else {
@@ -121,5 +132,6 @@ int main() {
     cout << "Ukuran Gambar sesudah : " << resultSize << " KB" << endl;
     cout << "Persentase Kompresi : " << 100.0 - ((resultSize / inputSize) * 100.0) << "%" << endl;
 
+    
     return 0;
 }

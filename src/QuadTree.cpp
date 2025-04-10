@@ -1,4 +1,5 @@
 #include "QuadTree.h"
+// #include "ErrorMetric.h" 
 #include <cmath>        // Untuk std::pow, std::abs, std::log2
 #include <vector>
 #include <numeric>      // Opsional: Untuk std::accumulate

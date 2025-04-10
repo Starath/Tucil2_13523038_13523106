@@ -46,7 +46,7 @@ void MakeGif::create(const std::string& folderPath, const std::string& outputGif
     stbi_image_free(first_frame);
 
     GifWriter writer = {};
-    if (!GifBegin(&writer, outputGif.c_str(), width, height, 10)) {
+    if (!GifBegin(&writer, outputGif.c_str(), width, height, 50)) {
         std::cerr << "Gagal membuat GIF." << std::endl;
         return;
     }
@@ -63,7 +63,7 @@ void MakeGif::create(const std::string& folderPath, const std::string& outputGif
             stbi_image_free(image);
             continue;
         }
-        GifWriteFrame(&writer, image, width, height, 10);
+        GifWriteFrame(&writer, image, width, height, 50);
         stbi_image_free(image);
     }
 
