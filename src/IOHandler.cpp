@@ -230,7 +230,7 @@ float IOHandler::promptForThreshold() {
     if (selectedMetric == ErrorMetric::VARIANCE) {
         metricName = "Variance";
         min_val = 0.0;
-        max_val = 1000.0;
+        max_val = 255.0 * 255.0;
     } else if (selectedMetric == ErrorMetric::MAD) {
         metricName = "MAD";
         min_val = 0.0;
