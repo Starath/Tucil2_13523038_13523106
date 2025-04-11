@@ -1,136 +1,107 @@
 #include "QuadTree.h"
 #include "Image.h"
 #include "MakeGif.h"
-#include "MakeFrame.h"  
+#include "MakeFrame.h"
+#include "IOHandler.h"
 #include <iostream>
 #include <fstream>
 #include <vector>
 #include <string>
 #include <chrono>
+#include <filesystem>
+#include <stdexcept>
 
-using namespace std;
+namespace fs = std::filesystem;
 
 int main() {
-    string inputFilename, outputfilePath;
+    IOHandler ioHandler;
+
+    std::string inputFilename, outputfilePath;
     Image queryImg, resultImg;
-    int methodChoice;
-    double inputSize = 0, resultSize = 0;
+    ErrorMetric metric;
     float threshold = 0;
     int minBlockSize = 0;
+    double inputSize = 0, resultSize = 0;
+    int treeDepth = -1;
+    size_t nodeCount = 0;
 
-    // Load Gambar
-    cout << "Masukkan Alamat Gambar (ex: image.png / image.jpg) : ";
-    cin >> inputFilename;
-    cout << "File Gambar Yang Akan di Proses : " << inputFilename << endl;
+    try {
+        // Input dari pengguna 
+        inputFilename = ioHandler.promptForInputPath();
+        ioHandler.displayMessage("File Gambar Yang Akan di Proses : " + inputFilename);
 
-    // Deteksi ekstensi input
-    bool isGif = false;
-    if (inputFilename.size() >= 4) {
-        string ext = inputFilename.substr(inputFilename.size() - 4);
-        for (auto& c : ext) c = tolower(c);
-        if (ext == ".gif") {
-            isGif = true;
+        metric = ioHandler.promptForErrorMetric();
+        threshold = ioHandler.promptForThreshold();
+        minBlockSize = ioHandler.promptForMinBlockSize();
+        outputfilePath = ioHandler.promptForOutputPath();
+
+        auto startTime = std::chrono::high_resolution_clock::now();
+
+        bool isOutputGif = false;
+        fs::path outPathObj(outputfilePath);
+         if (outPathObj.has_extension() && outPathObj.extension().string() == ".gif") {
+             isOutputGif = true;
         }
-    }
 
-    // Input metode kompresi
-    cout << "Pilih Metode Perhitungan Error: " << endl;
-    cout << "1. Variance" << endl;
-    cout << "2. Mean Absolute Deviation (MAD)" << endl;
-    cout << "3. Max Pixel Difference" << endl;
-    cout << "4. Entropy" << endl;
-    cout << "5. SSIM" << endl;
-    cout << "Pilih (1/2/3/4/5) : ";
-    cin >> methodChoice;
-
-    cout << "Masukkan ambang batas (threshold variansi): ";
-    cin >> threshold;
-    cout << "Masukkan ukuran minimum Blok: ";
-    cin >> minBlockSize;
-    cout << "Masukan Alamat Gambar Hasil Kompresi: ";
-    cin >> outputfilePath;
-
-    // Mapping metode
-    ErrorMetric metric;
-    if (methodChoice == 1) {
-        metric = ErrorMetric::VARIANCE;
-    } else if (methodChoice == 2) {
-        metric = ErrorMetric::MAD;
-    } else if (methodChoice == 3) {
-        metric = ErrorMetric::MAX_PIXEL_DIFFERENCE;
-    } else if (methodChoice == 4) {
-        metric = ErrorMetric::ENTROPY;
-    } else if (methodChoice == 5) {
-        metric = ErrorMetric::SSIM;
-    } else {
-        cout << "Input Pilihan Tidak Valid!" << endl;
-        return -1;
-    }
-
-    auto startTime = chrono::high_resolution_clock::now();
-
-    // Cek apakah output adalah file GIF
-    bool isOutputGif = (outputfilePath.size() >= 4 && outputfilePath.substr(outputfilePath.size() - 4) == ".gif");
-
-    if (isOutputGif) {
-        try {
-            cout << "Output adalah GIF, membuat frame..." << endl;
-
-            // Gunakan MakeFrame untuk menghasilkan beberapa frame dan menyimpannya dalam folder
-            string outputFolderPath = "frames";  // Tentukan folder untuk menyimpan frame
+        if (isOutputGif) {
+            // Alur pembuatan GIF
+            ioHandler.displayMessage("Output adalah GIF, membuat frame...");
+            std::string outputFolderPath = "frames_temp";
+             if (fs::exists(outputFolderPath)) {
+                 ioHandler.displayError("Warning: Folder '" + outputFolderPath + "' sudah ada. Menghapusnya...");
+                 MakeFrame::deleteFramesFolder(outputFolderPath);
+             }
             MakeFrame::createFrames(inputFilename, outputFolderPath, threshold, minBlockSize, 10);
-
-            // Buat GIF dari frame yang telah dibuat
-            string outputGif = outputfilePath;
-            MakeGif::create(outputFolderPath, outputGif);
+            MakeGif::create(outputFolderPath, outputfilePath);
             MakeFrame::deleteFramesFolder(outputFolderPath);
-            cout << "GIF berhasil dibuat: " << outputGif << endl;
-        } catch (const std::exception& e) {
-            cerr << "Error saat memproses GIF: " << e.what() << endl;
-            return -1;
-        }
-    } else {
-        try {
+            ioHandler.displayMessage("GIF berhasil dibuat: " + outputfilePath);
+
+        } else {
+            // Alur kompresi gambar
             queryImg = Image::loadFromFile(inputFilename);
-            cout << "File Berhasil di Load!!" << endl;
+            ioHandler.displayMessage("File Berhasil di Load!!");
 
             Quadtree qt(queryImg, metric, threshold, minBlockSize);
             resultImg = qt.reconstructImage();
             resultImg.saveImage(outputfilePath);
 
-            cout << "Gambar Berhasil Di Kompresi Pada Alamat: " << outputfilePath << endl;
+            treeDepth = qt.getDepth();
+            nodeCount = qt.getNodeCount();
 
-            cout << "Kedalaman Pohon : " << qt.getDepth() << endl;
-            cout << "Banyak simpul pada pohon : " << qt.getNodeCount() << endl;
+            ioHandler.displayMessage("Gambar Berhasil Di Kompresi Pada Alamat: " + outputfilePath);
         }
-        catch (const ImageError& e) {
-            cerr << "Gagal, Gambar tidak valid / tidak ditemukan: " << e.what() << endl;
-            return -1;
+
+        auto endTime = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> execTime = endTime - startTime;
+
+        // Perhitungan ukuran file 
+        std::ifstream fileInputSize(inputFilename, std::ios::binary | std::ios::ate);
+        if (fileInputSize) {
+            inputSize = static_cast<double>(fileInputSize.tellg()) / 1024.0;
+        } else {
+             ioHandler.displayError("Warning: Tidak dapat membuka file input untuk mengukur ukuran.");
         }
-        catch (const std::exception& e) {
-            cerr << "Error: " << e.what() << endl;
-            return -1;
+
+        std::ifstream fileOutputSize(outputfilePath, std::ios::binary | std::ios::ate);
+         if (fileOutputSize) {
+            resultSize = static_cast<double>(fileOutputSize.tellg()) / 1024.0;
+        } else {
+            ioHandler.displayError("Warning: Tidak dapat membuka file output untuk mengukur ukuran.");
         }
+
+        ioHandler.displayStatistics(execTime.count(), inputSize, resultSize, treeDepth, nodeCount, isOutputGif);
+
+
+    } catch (const ImageError& e) {
+        ioHandler.displayError("Error Gambar: " + std::string(e.what()));
+        return 1; // Kode error: Masalah terkait gambar
+    } catch (const std::exception& e) {
+        ioHandler.displayError("Error Umum: " + std::string(e.what()));
+        return 2; // Kode error: Masalah umum runtime
+    } catch (...) {
+        ioHandler.displayError("Terjadi error yang tidak diketahui.");
+        return 3; // Kode error: Tidak diketahui
     }
 
-    auto endTime = chrono::high_resolution_clock::now();
-    chrono::duration<double, milli> execTime = endTime - startTime;
-
-    // Hitung ukuran file
-    ifstream fileInputSize(inputFilename, ios::binary | ios::ate);
-    inputSize = static_cast<double>(fileInputSize.tellg()) / 1024.0;
-
-    ifstream fileOutputSize(outputfilePath, ios::binary | ios::ate);
-    resultSize = static_cast<double>(fileOutputSize.tellg()) / 1024.0;
-
-    // Output statistik
-    cout << fixed;
-    cout.precision(2);
-    cout << "Waktu Eksekusi : " << execTime.count() << " ms" << endl;
-    cout << "Ukuran Gambar sebelum : " << inputSize << " KB" << endl;
-    cout << "Ukuran Gambar sesudah : " << resultSize << " KB" << endl;
-    cout << "Persentase Kompresi : " << 100.0 - ((resultSize / inputSize) * 100.0) << "%" << endl;
-
-    
-    return 0;
+    return 0; 
 }

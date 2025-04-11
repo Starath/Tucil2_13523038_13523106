@@ -11,7 +11,6 @@ void MakeFrame::createFrames(const std::string& inputImagePath, const std::strin
                               float threshold, int minBlockSize, int frameCount) {
     // Memuat gambar asli
     Image inputImage = Image::loadFromFile(inputImagePath);
-    std::cout << "Gambar berhasil dimuat!" << std::endl;
 
     // Membuat folder untuk menyimpan frame
     if (!fs::exists(outputFolderPath)) {
@@ -22,7 +21,6 @@ void MakeFrame::createFrames(const std::string& inputImagePath, const std::strin
     std::string destinationPath = "frames/frame_10.png"; // tujuan copy
     try {
         fs::copy(sourcePath, destinationPath, fs::copy_options::overwrite_existing);
-        std::cout << "File berhasil dicopy!\n";
     } catch (fs::filesystem_error& e) {
         std::cerr << "Gagal copy file: " << e.what() << '\n';
     }
@@ -34,7 +32,6 @@ void MakeFrame::createFrames(const std::string& inputImagePath, const std::strin
          try {
              fs::copy(inputImagePath, originalFileName);
              saveFrame(inputImage, outputFolderPath, 0);
-             std::cout << "Gambar original berhasil disalin sebagai frame_0.png." << std::endl;
          } catch (const std::exception& e) {
              std::cerr << "Error saat menyalin gambar original: " << e.what() << std::endl;
          }
@@ -53,10 +50,6 @@ void MakeFrame::createFrames(const std::string& inputImagePath, const std::strin
         float currentThreshold = thresholdStep * (i + 1);
         int currentMinBlockSize = minBlockStep * (i + 1);
 
-        // Menampilkan info frame yang sedang diproses
-        std::cout << "Membuat frame " << i + 1 << " dengan threshold: " << currentThreshold
-                  << " dan minBlock: " << currentMinBlockSize << std::endl;
-
         // Proses kompresi gambar dengan nilai threshold dan minBlock yang berbeda-beda
         Quadtree qt(inputImage, ErrorMetric::VARIANCE, currentThreshold, currentMinBlockSize);
         Image resultImage = qt.reconstructImage();
@@ -65,7 +58,6 @@ void MakeFrame::createFrames(const std::string& inputImagePath, const std::strin
         saveFrame(resultImage, outputFolderPath, i);
     }
 
-    std::cout << "Proses frame selesai!" << std::endl;
     
 }
 
@@ -81,7 +73,6 @@ void MakeFrame::saveFrame(const Image& img, const std::string& outputPath, int f
 void MakeFrame::deleteFramesFolder(const std::string& folderPath) {
     try {
         fs::remove_all(folderPath);  // Menghapus folder beserta isinya
-        std::cout << "Folder " << folderPath << " berhasil dihapus." << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Error saat menghapus folder " << folderPath << ": " << e.what() << std::endl;
     }
