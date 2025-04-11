@@ -18,7 +18,7 @@ void MakeFrame::createFrames(const std::string& inputImagePath, const std::strin
     }
 
     std::string sourcePath = inputImagePath;      // file asal
-    std::string destinationPath = "frames/frame_10.png"; // tujuan copy
+    std::string destinationPath = "frames_temp/frame_0.png"; // tujuan copy
     try {
         fs::copy(sourcePath, destinationPath, fs::copy_options::overwrite_existing);
     } catch (fs::filesystem_error& e) {
@@ -36,7 +36,7 @@ void MakeFrame::createFrames(const std::string& inputImagePath, const std::strin
              std::cerr << "Error saat menyalin gambar original: " << e.what() << std::endl;
          }
      } else {
-         std::cout << "frame_0.png sudah ada di folder, gambar original tidak disalin ulang." << std::endl;
+         //std::cout << "frame_0.png sudah ada di folder, gambar original tidak disalin ulang." << std::endl;
      }
 
 
@@ -55,7 +55,7 @@ void MakeFrame::createFrames(const std::string& inputImagePath, const std::strin
         Image resultImage = qt.reconstructImage();
 
         // Simpan frame
-        saveFrame(resultImage, outputFolderPath, i);
+        saveFrame(resultImage, outputFolderPath, i+1);
     }
 
     

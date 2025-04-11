@@ -1,11 +1,11 @@
 #include "IOHandler.h"
 #include <iostream>
-#include <limits>    
-#include <sstream>   
-#include <stdexcept> 
-#include <iomanip>  
-#include <algorithm> 
-
+#include <limits>
+#include <sstream>
+#include <stdexcept>
+#include <iomanip>
+#include <algorithm>
+#include <vector>
 
 void IOHandler::clearInputBuffer() const {
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
@@ -13,19 +13,17 @@ void IOHandler::clearInputBuffer() const {
 
 std::string IOHandler::promptForInputPath() {
     std::string filePath;
-    // Daftar ekstensi yang didukung (dalam huruf kecil)
     const std::vector<std::string> supportedExtensions = {
         ".jpg", ".jpeg", ".png"
     };
 
     while (true) {
-        std::cout << "Masukkan Alamat Absoulute Gambar Input: ";
+        std::cout << "1. Masukkan Alamat Absolut Gambar Input (contoh: C:/Users/Nama/Pictures/gambar.png): ";
         std::getline(std::cin >> std::ws, filePath);
         try {
             fs::path inputPath(filePath);
 
             if (fs::exists(inputPath) && fs::is_regular_file(inputPath)) {
-
                 if (inputPath.has_extension()) {
                     std::string ext = inputPath.extension().string();
                     std::transform(ext.begin(), ext.end(), ext.begin(),
@@ -42,16 +40,23 @@ std::string IOHandler::promptForInputPath() {
                     if (found) {
                         return filePath;
                     } else {
-                        displayError("Ekstensi file '" + inputPath.extension().string() + "' tidak didukung. Gunakan salah satu dari: .jpg, .jpeg, .png, .bmp, .tga, .psd, .gif, .hdr, .pic, .pnm, .pgm, .ppm");
+                        std::string supportedExtStr;
+                        for(size_t i = 0; i < supportedExtensions.size(); ++i) {
+                            supportedExtStr += supportedExtensions[i] + (i == supportedExtensions.size() - 1 ? "" : ", ");
+                        }
+                        displayError("Ekstensi file input '" + inputPath.extension().string() + "' tidak didukung. Gunakan salah satu dari: " + supportedExtStr);
                     }
                 } else {
                      displayError("File tidak memiliki ekstensi yang dikenali.");
                 }
+
             } else {
                 displayError("File tidak ditemukan atau bukan file reguler di path: " + filePath);
             }
         } catch (const fs::filesystem_error& e) {
-             displayError("Filesystem error: " + std::string(e.what()));
+             displayError("Filesystem error saat memeriksa path input: " + std::string(e.what()));
+        } catch (const std::exception& e) {
+             displayError("Error saat memproses path input: " + std::string(e.what()));
         }
     }
 }
@@ -59,22 +64,22 @@ std::string IOHandler::promptForInputPath() {
 std::string IOHandler::promptForOutputPath() {
     std::string filePath;
      const std::vector<std::string> supportedOutputExtensions = {
-        ".png", ".jpg", ".jpeg", ".gif"
+        ".png", ".bmp", ".jpg", ".jpeg", ".tga"
     };
 
     while (true) {
-        std::cout << "Masukkan Alamat Gambar Hasil Kompresi (direktori harus ada, ekstensi: .png, .bmp, .jpg, .tga, .gif): ";
+        std::cout << "6. Masukkan Alamat Gambar Hasil Kompresi (direktori harus ada, ekstensi: .png, .bmp, .jpg, .tga): ";
         std::getline(std::cin >> std::ws, filePath);
         try {
             fs::path outputPath(filePath);
 
-            if (!outputPath.has_filename() || outputPath.filename().empty()) {
-                 displayError("Nama file output tidak boleh kosong.");
+            if (!outputPath.has_filename() || outputPath.filename().empty() || outputPath.filename() == "." || outputPath.filename() == "..") {
+                 displayError("Nama file output tidak valid atau kosong.");
                  continue;
             }
 
              if (!outputPath.has_extension()) {
-                 displayError("Nama file output harus memiliki ekstensi (contoh: .png, .jpg, .gif).");
+                 displayError("Nama file output harus memiliki ekstensi (contoh: .png, .jpg).");
                  continue;
              }
              std::string ext = outputPath.extension().string();
@@ -89,38 +94,98 @@ std::string IOHandler::promptForOutputPath() {
                  }
              }
              if (!outputExtSupported) {
-                 displayError("Ekstensi file output '" + outputPath.extension().string() + "' tidak didukung. Gunakan: .png, .bmp, .jpg, .jpeg, .tga, .gif");
+                 std::string supportedExtStr;
+                 for(size_t i = 0; i < supportedOutputExtensions.size(); ++i) {
+                     supportedExtStr += supportedOutputExtensions[i] + (i == supportedOutputExtensions.size() - 1 ? "" : ", ");
+                 }
+                 displayError("Ekstensi file output '" + outputPath.extension().string() + "' tidak didukung untuk kompresi gambar. Gunakan: " + supportedExtStr);
                  continue;
              }
 
 
             if (outputPath.has_parent_path()) {
-                if (!fs::exists(outputPath.parent_path())) {
+                 if (!outputPath.parent_path().empty() && !fs::exists(outputPath.parent_path())) {
                     displayError("Direktori induk untuk path output tidak ditemukan: " + outputPath.parent_path().string());
                     continue;
-                }
-                return filePath;
-            } else {
-                return filePath;
+                 } else if (!outputPath.parent_path().empty() && !fs::is_directory(outputPath.parent_path())) {
+                    displayError("Path induk untuk output bukanlah direktori: " + outputPath.parent_path().string());
+                    continue;
+                 }
             }
+            return filePath;
+
         } catch (const fs::filesystem_error& e) {
-            displayError("Filesystem error: " + std::string(e.what()));
+            displayError("Filesystem error saat memeriksa path output: " + std::string(e.what()));
+        } catch (const std::exception& e) {
+             displayError("Error saat memproses path output: " + std::string(e.what()));
         }
     }
 }
 
+std::string IOHandler::promptForGifOutputPath() {
+    std::string filePath;
+    const std::string gifExtension = ".gif";
+
+    while (true) {
+        std::cout << "7. Masukkan Alamat Output GIF [Bonus] (opsional, tekan Enter untuk skip): ";
+        std::getline(std::cin, filePath);
+
+        if (filePath.empty()) {
+            displayMessage("Output GIF dilewati.");
+            return "";
+        }
+
+        try {
+            fs::path outputPath(filePath);
+
+            if (!outputPath.has_filename() || outputPath.filename().empty() || outputPath.filename() == "." || outputPath.filename() == "..") {
+                 displayError("Nama file GIF tidak valid atau kosong.");
+                 continue;
+            }
+
+            if (!outputPath.has_extension()) {
+                 displayError("Nama file GIF harus memiliki ekstensi .gif");
+                 continue;
+            }
+             std::string ext = outputPath.extension().string();
+             std::transform(ext.begin(), ext.end(), ext.begin(),
+                            [](unsigned char c){ return std::tolower(c); });
+
+            if (ext != gifExtension) {
+                 displayError("Ekstensi file output GIF harus .gif");
+                 continue;
+            }
+
+            if (outputPath.has_parent_path()) {
+                 if (!outputPath.parent_path().empty() && !fs::exists(outputPath.parent_path())) {
+                    displayError("Direktori induk untuk path output GIF tidak ditemukan: " + outputPath.parent_path().string());
+                    continue;
+                 } else if (!outputPath.parent_path().empty() && !fs::is_directory(outputPath.parent_path())) {
+                    displayError("Path induk untuk output GIF bukanlah direktori: " + outputPath.parent_path().string());
+                    continue;
+                 }
+            }
+            return filePath;
+
+        } catch (const fs::filesystem_error& e) {
+            displayError("Filesystem error saat memeriksa path output GIF: " + std::string(e.what()));
+        } catch (const std::exception& e) {
+             displayError("Error saat memproses path output GIF: " + std::string(e.what()));
+        }
+    }
+}
 
 ErrorMetric IOHandler::promptForErrorMetric() {
     int choice;
-    std::cout << "Pilih Metode Perhitungan Error: " << std::endl;
-    std::cout << "1. Variance" << std::endl;
-    std::cout << "2. Mean Absolute Deviation (MAD)" << std::endl;
-    std::cout << "3. Max Pixel Difference" << std::endl;
-    std::cout << "4. Entropy" << std::endl;
-    std::cout << "5. SSIM" << std::endl;
+    std::cout << "2. Pilih Metode Perhitungan Error: " << std::endl;
+    std::cout << "   1. Variance" << std::endl;
+    std::cout << "   2. Mean Absolute Deviation (MAD)" << std::endl;
+    std::cout << "   3. Max Pixel Difference" << std::endl;
+    std::cout << "   4. Entropy" << std::endl;
+    std::cout << "   5. SSIM (Bonus)" << std::endl;
 
     while (true) {
-        std::cout << "Pilih (1-5) : ";
+        std::cout << "   Pilih (1-5): ";
         if (std::cin >> choice && choice >= 1 && choice <= 5) {
             clearInputBuffer();
             switch (choice) {
@@ -129,27 +194,26 @@ ErrorMetric IOHandler::promptForErrorMetric() {
                 case 3: return ErrorMetric::MAX_PIXEL_DIFFERENCE;
                 case 4: return ErrorMetric::ENTROPY;
                 case 5: return ErrorMetric::SSIM;
-                default: break;
             }
         } else {
-            displayError("Masukan tidak valid. Harap masukkan angka bulat antara 1 dan 5.");
-            std::cin.clear(); 
-            clearInputBuffer(); 
+            displayError("   Masukan tidak valid. Harap masukkan angka bulat antara 1 dan 5.");
+            std::cin.clear();
+            clearInputBuffer();
         }
     }
 }
 
 float IOHandler::promptForThreshold() {
-    double value; 
+    float value;
     while (true) {
-        std::cout << "Masukkan ambang batas (threshold, >= 0): ";
-        if (std::cin >> value && value >= 0.0) {
-             clearInputBuffer(); 
-            return static_cast<float>(value); 
+        std::cout << "3. Masukkan ambang batas (threshold, >= 0): ";
+        if (std::cin >> value && value >= 0.0f) {
+             clearInputBuffer();
+            return value;
         } else {
-            displayError("Masukan tidak valid. Harap masukkan angka non-negatif.");
-            std::cin.clear(); 
-            clearInputBuffer(); 
+            displayError("   Masukan tidak valid. Harap masukkan angka non-negatif.");
+            std::cin.clear();
+            clearInputBuffer();
         }
     }
 }
@@ -157,56 +221,91 @@ float IOHandler::promptForThreshold() {
 int IOHandler::promptForMinBlockSize() {
     int value;
     while (true) {
-        std::cout << "Masukkan ukuran minimum Blok (>= 1): ";
+        std::cout << "4. Masukkan ukuran minimum Blok (luas piksel, >= 1): ";
         if (std::cin >> value && value >= 1) {
-            clearInputBuffer(); 
+            clearInputBuffer();
             return value;
         } else {
-            displayError("Masukan tidak valid. Harap masukkan angka bulat >= 1.");
-            std::cin.clear(); 
-            clearInputBuffer(); 
+            displayError("   Masukan tidak valid. Harap masukkan angka bulat >= 1.");
+            std::cin.clear();
+            clearInputBuffer();
         }
     }
 }
 
-void IOHandler::displayStatistics(double execTime, double inputSize, double resultSize,
-                                  int depth, size_t nodeCount, bool isGifMode) const {
-    std::cout << std::fixed << std::setprecision(2); 
-    std::cout << "------------------------------------------" << std::endl;
-    std::cout << "Waktu Eksekusi : " << execTime << " ms" << std::endl;
+float IOHandler::promptForTargetCompressionPercentage() {
+    float value;
+    while (true) {
+        std::cout << "5. Masukkan Target Rasio Kompresi [Bonus] (0 nonaktif, 0 < target < 1.0): ";
+        if (std::cin >> value && value >= 0.0f && value < 1.0f) {
+            clearInputBuffer();
+            return value;
+        } else {
+            displayError("   Masukan tidak valid. Harap masukkan angka antara 0.0 (inklusif) dan 1.0 (eksklusif).");
+            std::cin.clear();
+            clearInputBuffer();
+        }
+    }
+}
 
-    if (inputSize > 0) {
-        std::cout << "Ukuran Gambar sebelum : " << inputSize << " KB" << std::endl;
+void IOHandler::displayStatistics(double execTime,
+                                  double inputSizeKB,
+                                  double compressedImageSizeKB,
+                                  double finalOutputSizeKB,
+                                  int depth,
+                                  size_t nodeCount) const {
+    std::cout << std::fixed << std::setprecision(2);
+    std::cout << "\n---------------- HASIL ---------------" << std::endl;
+    std::cout << "8. Waktu Eksekusi       : " << execTime << " ms" << std::endl;
+
+    if (inputSizeKB > 0) {
+        std::cout << "9. Ukuran Sebelum       : " << inputSizeKB << " KB (Original)" << std::endl;
     } else {
-        std::cout << "Ukuran Gambar sebelum : Tidak dapat diukur." << std::endl;
+        std::cout << "9. Ukuran Sebelum       : Tidak dapat diukur." << std::endl;
     }
 
-    if (resultSize > 0) {
-        std::cout << "Ukuran Gambar sesudah : " << resultSize << " KB" << std::endl;
-        if (inputSize > 0) { 
-            double compressionRatio = (resultSize / inputSize);
-            double percentage = std::max(0.0, (1.0 - compressionRatio) * 100.0);
-            std::cout << "Persentase Kompresi : " << percentage << "%" << std::endl;
+    if (finalOutputSizeKB > 0) {
+        std::cout << "10. Ukuran Output Akhir : " << finalOutputSizeKB << " KB (" << "Gambar" << ")" << std::endl;
+    } else {
+         std::cout << "10. Ukuran Output Akhir : Tidak dapat diukur." << std::endl;
+    }
+
+    if (inputSizeKB > 0 && compressedImageSizeKB > 0) {
+        if (inputSizeKB > 0.001) { // Hindari pembagian dengan nol atau nilai yang sangat kecil
+            if (inputSizeKB >= compressedImageSizeKB) {
+                double compressionRatio = (inputSizeKB - compressedImageSizeKB) / inputSizeKB;
+                double percentage = compressionRatio * 100.0;
+                std::cout << "11. Persentase Kompresi : " << percentage << "% (Original vs Gambar Kompresi)" << std::endl;
+            } else {
+                double increaseRatio = (compressedImageSizeKB - inputSizeKB) / inputSizeKB;
+                double percentage = increaseRatio * 100.0;
+                std::cout << "11. Persentase Kompresi : -" << percentage << "% (Ukuran bertambah)" << std::endl;
+            }
+        } else {
+            std::cout << "11. Persentase Kompresi : Tidak dapat dihitung (ukuran original terlalu kecil)." << std::endl;
         }
     } else {
-         std::cout << "Ukuran Gambar sesudah : Tidak dapat diukur." << std::endl;
+         std::cout << "11. Persentase Kompresi : Tidak dapat dihitung (ukuran input/gambar kompresi tidak valid)." << std::endl;
     }
 
-    if (!isGifMode) {
-        if (depth >= 0) {
-            std::cout << "Kedalaman Pohon : " << depth << std::endl;
-        }
-        if (nodeCount > 0) {
-            std::cout << "Banyak simpul pada pohon : " << nodeCount << std::endl;
-        }
+
+    if (depth >= 0) {
+        std::cout << "12. Kedalaman Pohon      : " << depth << std::endl;
+    } else {
+            std::cout << "12. Kedalaman Pohon      : N/A" << std::endl;
     }
-    std::cout << "------------------------------------------" << std::endl;
+    if (nodeCount > 0) {
+        std::cout << "13. Jumlah Simpul Pohon  : " << nodeCount << std::endl;
+    } else {
+            std::cout << "13. Jumlah Simpul Pohon  : N/A" << std::endl;
+    }
+    std::cout << "--------------------------------------" << std::endl;
 }
 
 void IOHandler::displayMessage(const std::string& message) const {
-    std::cout << message << std::endl;
+    std::cout << "[INFO] " << message << std::endl;
 }
 
 void IOHandler::displayError(const std::string& errorMessage) const {
-    std::cerr << "Error: " << errorMessage << std::endl;
+    std::cerr << "[ERROR] " << errorMessage << std::endl;
 }
