@@ -13,6 +13,7 @@
 #include <limits>
 #include <cmath>
 #include <algorithm>
+#include <iomanip>
 
 namespace fs = std::filesystem;
 
@@ -26,16 +27,13 @@ int main() {
     float finalThreshold = 0.0f;
     int minBlockSize = 1;
     float targetCompressionRatio = 0.0f;
-    double inputSizeKB = 0.0;
-    uintmax_t originalSizeBytes = 0;
-    uintmax_t compressedImageSizeBytes = 0;
-    uintmax_t finalOutputSizeBytes = 0;
     std::string outputImageExtension = ".png";
     const int jpgQuality = 85;
 
+    uintmax_t originalSizeBytes = 0;
+    uintmax_t compressedImageSizeBytes = 0;
+    double inputSizeKB = 0.0;
     double compressedImageSizeKB = 0.0;
-    double finalOutputSizeKB = 0.0;
-
     int treeDepth = -1;
     size_t nodeCount = 0;
     double execTimeMs = 0.0;
@@ -67,7 +65,6 @@ int main() {
 
         metric = ioHandler.promptForErrorMetric();
         initialThreshold = ioHandler.promptForThreshold();
-        finalThreshold = initialThreshold;
         minBlockSize = ioHandler.promptForMinBlockSize();
         targetCompressionRatio = ioHandler.promptForTargetCompressionPercentage();
         outputImageFilePath = ioHandler.promptForOutputPath();
@@ -85,14 +82,15 @@ int main() {
 
         outputGifFilePath = ioHandler.promptForGifOutputPath();
 
-        if (targetCompressionRatio > 0.0f) {
-            ioHandler.displayMessage("Mode target rasio kompresi aktif (" + std::to_string(targetCompressionRatio) + ").");
+        auto startTime = std::chrono::high_resolution_clock::now();
 
-            if (!outputGifFilePath.empty()) {
-                 ioHandler.displayError("Mode target rasio tidak didukung jika output GIF diminta.");
-                 ioHandler.displayMessage("Menggunakan threshold manual: " + std::to_string(initialThreshold));
-            } else if (originalSizeBytes == 0) {
-                ioHandler.displayError("Ukuran file asli tidak valid. Tidak dapat menggunakan mode target.");
+        finalThreshold = initialThreshold;
+
+        if (targetCompressionRatio > 0.0f) {
+            ioHandler.displayMessage("Mode target rasio kompresi aktif (" + std::to_string(targetCompressionRatio * 100.0f) + "%).");
+
+            if (originalSizeBytes == 0) {
+                ioHandler.displayError("Ukuran file asli tidak valid (0 bytes). Tidak dapat menggunakan mode target.");
                 ioHandler.displayMessage("Menggunakan threshold manual: " + std::to_string(initialThreshold));
             } else {
                 double targetSizeRatio = 1.0 - targetCompressionRatio;
@@ -102,14 +100,13 @@ int main() {
 
                 float minTh = 0.0f;
                 float maxTh = 50000.0f;
-                const int maxIterations = 20;
+                const int maxIterations = 40;
                 const float toleranceRatio = 0.05f;
                 float bestTh = initialThreshold;
-                uintmax_t closestSize = std::numeric_limits<uintmax_t>::max();
                 long long minDiff = std::numeric_limits<long long>::max();
                 const std::string tempFilename = "temp_compress_search" + outputImageExtension;
 
-                ioHandler.displayMessage("Memulai pencarian threshold (maks " + std::to_string(maxIterations) + " iterasi) [" + std::to_string(minTh) + "..." + std::to_string(maxTh) + "]");
+                ioHandler.displayMessage("Memulai pencarian threshold (maks " + std::to_string(maxIterations) + " iterasi) rentang awal: [" + std::to_string(minTh) + "..." + std::to_string(maxTh) + "]");
 
                 for (int iter = 0; iter < maxIterations; ++iter) {
                     float midTh = minTh + (maxTh - minTh) / 2.0f;
@@ -121,6 +118,7 @@ int main() {
                     try {
                         Quadtree trialQt(queryImg, metric, midTh, minBlockSize);
                         Image trialImage = trialQt.reconstructImage();
+
                         trialImage.saveImage(tempFilename, jpgQuality);
                         currentSize = fs::file_size(tempFilename);
                         fs::remove(tempFilename);
@@ -132,7 +130,6 @@ int main() {
 
                         if (absDiff < minDiff) {
                             minDiff = absDiff;
-                            closestSize = currentSize;
                             bestTh = midTh;
                             ioHandler.displayMessage("  -> Threshold terbaik sementara: " + std::to_string(bestTh) + " (Selisih Abs: " + std::to_string(minDiff) + ")");
                         }
@@ -144,14 +141,15 @@ int main() {
                         }
 
                         if (currentSize > targetSizeBytes) {
-                            ioHandler.displayMessage("  -> Ukuran > target, naikkan minThreshold.");
+                            ioHandler.displayMessage("  -> Ukuran > target, naikkan batas bawah threshold.");
                             minTh = midTh;
                         } else {
-                             ioHandler.displayMessage("  -> Ukuran < target, turunkan maxThreshold.");
+                             ioHandler.displayMessage("  -> Ukuran < target, turunkan batas atas threshold.");
                             maxTh = midTh;
                         }
+
                          if ((maxTh - minTh) < 0.01f) {
-                             ioHandler.displayMessage("  Rentang pencarian sangat kecil, konvergen.");
+                             ioHandler.displayMessage("  Rentang pencarian sangat kecil, dianggap konvergen.");
                              break;
                          }
 
@@ -166,108 +164,72 @@ int main() {
                 finalThreshold = bestTh;
             }
         } else {
-             ioHandler.displayMessage("Mode target rasio kompresi dinonaktifkan. Menggunakan threshold: " + std::to_string(initialThreshold));
+             ioHandler.displayMessage("Mode target rasio kompresi dinonaktifkan. Menggunakan threshold manual: " + std::to_string(initialThreshold));
+             finalThreshold = initialThreshold;
         }
 
+        ioHandler.displayMessage("Melakukan kompresi gambar final dengan threshold: " + std::to_string(finalThreshold));
+        Quadtree finalQt(queryImg, metric, finalThreshold, minBlockSize);
+        resultImg = finalQt.reconstructImage();
 
-        auto startTime = std::chrono::high_resolution_clock::now();
+        resultImg.saveImage(outputImageFilePath, jpgQuality);
+        ioHandler.displayMessage("Gambar Berhasil Dikompresi dan disimpan ke: " + outputImageFilePath);
+
+        try {
+             if (fs::exists(outputImageFilePath)) {
+                compressedImageSizeBytes = fs::file_size(outputImageFilePath);
+                compressedImageSizeKB = static_cast<double>(compressedImageSizeBytes) / 1024.0;
+             } else {
+                 ioHandler.displayError("Warning: File gambar output tidak ditemukan setelah penyimpanan. Ukuran tidak dapat diukur.");
+                 compressedImageSizeBytes = 0;
+                 compressedImageSizeKB = 0.0;
+             }
+         } catch (const fs::filesystem_error& e) {
+             ioHandler.displayError("Warning: Tidak dapat mengukur ukuran file gambar output: " + std::string(e.what()));
+             compressedImageSizeBytes = 0;
+             compressedImageSizeKB = 0.0;
+         }
+
+        treeDepth = finalQt.getDepth();
+        nodeCount = finalQt.getNodeCount();
 
         if (!outputGifFilePath.empty()) {
-            ioHandler.displayMessage("Membuat frame untuk GIF...");
+            ioHandler.displayMessage("Memulai pembuatan frame untuk GIF...");
             std::string outputFolderPath = "frames_temp";
+
              if (fs::exists(outputFolderPath)) {
-                 ioHandler.displayMessage("Membersihkan folder frame sementara...");
+                 ioHandler.displayMessage("Membersihkan folder frame sementara yang mungkin ada...");
                  MakeFrame::deleteFramesFolder(outputFolderPath);
              }
+
             const int frameCountForGif = 10;
             MakeFrame::createFrames(inputFilename, outputFolderPath, finalThreshold, minBlockSize, frameCountForGif);
 
-            std::string lastFramePathStr = outputFolderPath + "/frame_" + std::to_string(frameCountForGif) + ".png";
-            fs::path lastFramePath(lastFramePathStr);
-            if (fs::exists(lastFramePath)) {
-                 try {
-                     compressedImageSizeBytes = fs::file_size(lastFramePath);
-                     compressedImageSizeKB = static_cast<double>(compressedImageSizeBytes) / 1024.0;
-                     ioHandler.displayMessage("Ukuran gambar terkompresi (frame terakhir): " + std::to_string(compressedImageSizeKB) + " KB");
-                 } catch (const fs::filesystem_error& e) {
-                     ioHandler.displayError("Warning: Gagal mengukur ukuran frame terakhir: " + std::string(e.what()));
-                     compressedImageSizeBytes = 0;
-                     compressedImageSizeKB = 0.0;
-                 }
-            } else {
-                 ioHandler.displayError("Warning: Frame terakhir tidak ditemukan untuk pengukuran ukuran.");
-                 compressedImageSizeBytes = 0;
-                 compressedImageSizeKB = 0.0;
-            }
-
-            ioHandler.displayMessage("Membuat file GIF...");
+            ioHandler.displayMessage("Membuat file GIF dari frame...");
             MakeGif::create(outputFolderPath, outputGifFilePath);
-
-            try {
-                if (fs::exists(outputGifFilePath)) {
-                    finalOutputSizeBytes = fs::file_size(lastFramePath);
-                    finalOutputSizeKB = static_cast<double>(finalOutputSizeBytes) / 1024.0;
-                } else {
-                    ioHandler.displayError("Warning: File GIF output tidak ditemukan setelah pembuatan.");
-                    finalOutputSizeBytes = 0;
-                    finalOutputSizeKB = 0.0;
-                }
-            } catch (const fs::filesystem_error& e) {
-                ioHandler.displayError("Warning: Tidak dapat mengukur ukuran file GIF output: " + std::string(e.what()));
-                finalOutputSizeBytes = 0;
-                finalOutputSizeKB = 0.0;
-            }
 
             ioHandler.displayMessage("Menghapus frame sementara...");
             MakeFrame::deleteFramesFolder(outputFolderPath);
-            resultImg.saveImage(outputImageFilePath, jpgQuality);
-
-            treeDepth = -1;
-            nodeCount = 0;
-
-        } else {
-             ioHandler.displayMessage("Melakukan kompresi gambar dengan threshold: " + std::to_string(finalThreshold));
-            Quadtree finalQt(queryImg, metric, finalThreshold, minBlockSize);
-            resultImg = finalQt.reconstructImage();
-
-            treeDepth = finalQt.getDepth();
-            nodeCount = finalQt.getNodeCount();
-
-            resultImg.saveImage(outputImageFilePath, jpgQuality);
-            ioHandler.displayMessage("Gambar Berhasil Dikompresi ke: " + outputImageFilePath);
-
-            try {
-                 if (fs::exists(outputImageFilePath)) {
-                    compressedImageSizeBytes = fs::file_size(outputImageFilePath);
-                    finalOutputSizeBytes = compressedImageSizeBytes;
-                    compressedImageSizeKB = static_cast<double>(compressedImageSizeBytes) / 1024.0;
-                    finalOutputSizeKB = compressedImageSizeKB;
-                 } else {
-                     ioHandler.displayError("Warning: File gambar output tidak ditemukan setelah penyimpanan.");
-                     compressedImageSizeBytes = 0;
-                     finalOutputSizeBytes = 0;
-                     compressedImageSizeKB = 0.0;
-                     finalOutputSizeKB = 0.0;
-                 }
-
-             } catch (const fs::filesystem_error& e) {
-                 ioHandler.displayError("Warning: Tidak dapat membuka file gambar output untuk mengukur ukuran: " + std::string(e.what()));
-                 compressedImageSizeBytes = 0;
-                 finalOutputSizeBytes = 0;
-                 compressedImageSizeKB = 0.0;
-                 finalOutputSizeKB = 0.0;
-             }
+            ioHandler.displayMessage("GIF berhasil dibuat: " + outputGifFilePath);
         }
 
         auto endTime = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double, std::milli> duration = endTime - startTime;
         execTimeMs = duration.count();
 
-        ioHandler.displayStatistics(execTimeMs, inputSizeKB, compressedImageSizeKB, finalOutputSizeKB, treeDepth, nodeCount);
-
+        ioHandler.displayStatistics(execTimeMs, inputSizeKB, compressedImageSizeKB, compressedImageSizeKB, treeDepth, nodeCount);
 
     } catch (const ImageError& e) {
         ioHandler.displayError("Error Gambar: " + std::string(e.what()));
+        return 1;
+    } catch (const std::invalid_argument& e) {
+        ioHandler.displayError("Error Argumen Tidak Valid: " + std::string(e.what()));
+        return 1;
+    } catch (const std::out_of_range& e) {
+        ioHandler.displayError("Error Akses di Luar Batas: " + std::string(e.what()));
+        return 1;
+    } catch (const std::runtime_error& e) {
+        ioHandler.displayError("Error Runtime: " + std::string(e.what()));
         return 1;
     } catch (const std::exception& e) {
         ioHandler.displayError("Error Umum: " + std::string(e.what()));
