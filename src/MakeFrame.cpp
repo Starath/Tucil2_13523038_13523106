@@ -18,12 +18,22 @@ void MakeFrame::createFrames(const std::string& inputImagePath, const std::strin
         fs::create_directory(outputFolderPath);
     }
 
+    std::string sourcePath = inputImagePath;      // file asal
+    std::string destinationPath = "frames/frame_10.png"; // tujuan copy
+    try {
+        fs::copy(sourcePath, destinationPath, fs::copy_options::overwrite_existing);
+        std::cout << "File berhasil dicopy!\n";
+    } catch (fs::filesystem_error& e) {
+        std::cerr << "Gagal copy file: " << e.what() << '\n';
+    }
+
      // Mengecek apakah file frame_0.png sudah ada
      std::string originalFileName = outputFolderPath + "/frame_0.png";
      if (!fs::exists(originalFileName)) {
          // Jika file tidak ada, salin gambar original sebagai frame_0.png
          try {
              fs::copy(inputImagePath, originalFileName);
+             saveFrame(inputImage, outputFolderPath, 0);
              std::cout << "Gambar original berhasil disalin sebagai frame_0.png." << std::endl;
          } catch (const std::exception& e) {
              std::cerr << "Error saat menyalin gambar original: " << e.what() << std::endl;
@@ -31,6 +41,7 @@ void MakeFrame::createFrames(const std::string& inputImagePath, const std::strin
      } else {
          std::cout << "frame_0.png sudah ada di folder, gambar original tidak disalin ulang." << std::endl;
      }
+
 
     // Menghitung peningkatan progres untuk threshold dan minBlock
     float thresholdStep = (threshold > 0) ? (threshold / frameCount ) : 1;
@@ -55,6 +66,7 @@ void MakeFrame::createFrames(const std::string& inputImagePath, const std::strin
     }
 
     std::cout << "Proses frame selesai!" << std::endl;
+    
 }
 
 // Fungsi untuk menyimpan frame sebagai file gambar

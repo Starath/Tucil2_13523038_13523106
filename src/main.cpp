@@ -1,8 +1,7 @@
 #include "QuadTree.h"
 #include "Image.h"
-#include "GifCompressor.h"
 #include "MakeGif.h"
-#include "MakeFrame.h"  // Include MakeFrame untuk menggunakan fitur frame
+#include "MakeFrame.h"  
 #include <iostream>
 #include <fstream>
 #include <vector>
