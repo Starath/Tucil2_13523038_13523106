@@ -60,7 +60,7 @@ Pixel QuadTreeNode::calculateAverageColor() const {
     unsigned char avgG = static_cast<unsigned char>((sumG + count / 2) / count);
     unsigned char avgB = static_cast<unsigned char>((sumB + count / 2) / count);
 
-    return Pixel(meanR, meanG, meanB);
+    return Pixel(avgR, avgG, avgB);
 }
 
 double QuadTreeNode::calculateError(ErrorMetric metric) const {
