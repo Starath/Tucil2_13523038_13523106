@@ -23,6 +23,12 @@ std::string IOHandler::promptForInputPath() {
         try {
             fs::path inputPath(filePath);
 
+            if (!inputPath.is_absolute()) {
+                displayError("Path input harus berupa path absolut.");
+                continue;
+            }
+
+
             if (fs::exists(inputPath) && fs::is_regular_file(inputPath)) {
                 if (inputPath.has_extension()) {
                     std::string ext = inputPath.extension().string();
@@ -64,14 +70,19 @@ std::string IOHandler::promptForInputPath() {
 std::string IOHandler::promptForOutputPath() {
     std::string filePath;
      const std::vector<std::string> supportedOutputExtensions = {
-        ".png", ".bmp", ".jpg", ".jpeg", ".tga"
+        ".png", ".jpg", ".jpeg"
     };
 
     while (true) {
-        std::cout << "6. Masukkan Alamat Gambar Hasil Kompresi (direktori harus ada, ekstensi: .png, .bmp, .jpg, .tga): ";
+        std::cout << "6. Masukkan Alamat Absolut Gambar Hasil Kompresi (ekstensi: .png, .jpg, .jpeg): ";
         std::getline(std::cin >> std::ws, filePath);
         try {
             fs::path outputPath(filePath);
+
+            if (!outputPath.is_absolute()) {
+                displayError("Path input harus berupa path absolut.");
+                continue;
+            }
 
             if (!outputPath.has_filename() || outputPath.filename().empty() || outputPath.filename() == "." || outputPath.filename() == "..") {
                  displayError("Nama file output tidak valid atau kosong.");
@@ -127,7 +138,7 @@ std::string IOHandler::promptForGifOutputPath() {
     const std::string gifExtension = ".gif";
 
     while (true) {
-        std::cout << "7. Masukkan Alamat Output GIF [Bonus] (opsional, tekan Enter untuk skip): ";
+        std::cout << "7. Masukkan Alamat Absolut Output GIF [Bonus] (opsional, tekan Enter untuk skip): ";
         std::getline(std::cin, filePath);
 
         if (filePath.empty()) {
@@ -137,6 +148,11 @@ std::string IOHandler::promptForGifOutputPath() {
 
         try {
             fs::path outputPath(filePath);
+
+            if (!outputPath.is_absolute()) {
+                displayError("Path input harus berupa path absolut.");
+                continue;
+            }
 
             if (!outputPath.has_filename() || outputPath.filename().empty() || outputPath.filename() == "." || outputPath.filename() == "..") {
                  displayError("Nama file GIF tidak valid atau kosong.");
