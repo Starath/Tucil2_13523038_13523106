@@ -3,7 +3,8 @@
 #include <limits>    
 #include <sstream>   
 #include <stdexcept> 
-#include <iomanip>   
+#include <iomanip>  
+#include <algorithm> 
 
 
 void IOHandler::clearInputBuffer() const {
@@ -12,12 +13,40 @@ void IOHandler::clearInputBuffer() const {
 
 std::string IOHandler::promptForInputPath() {
     std::string filePath;
+    // Daftar ekstensi yang didukung (dalam huruf kecil)
+    const std::vector<std::string> supportedExtensions = {
+        ".jpg", ".jpeg", ".png"
+    };
+
     while (true) {
-        std::cout << "Masukkan Alamat Gambar (ex: image.png / image.jpg) : ";
+        std::cout << "Masukkan Alamat Absoulute Gambar Input: ";
         std::getline(std::cin >> std::ws, filePath);
         try {
-            if (fs::exists(filePath) && fs::is_regular_file(filePath)) {
-                return filePath;
+            fs::path inputPath(filePath);
+
+            if (fs::exists(inputPath) && fs::is_regular_file(inputPath)) {
+
+                if (inputPath.has_extension()) {
+                    std::string ext = inputPath.extension().string();
+                    std::transform(ext.begin(), ext.end(), ext.begin(),
+                                   [](unsigned char c){ return std::tolower(c); });
+
+                    bool found = false;
+                    for(const auto& supportedExt : supportedExtensions) {
+                        if (ext == supportedExt) {
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (found) {
+                        return filePath;
+                    } else {
+                        displayError("Ekstensi file '" + inputPath.extension().string() + "' tidak didukung. Gunakan salah satu dari: .jpg, .jpeg, .png, .bmp, .tga, .psd, .gif, .hdr, .pic, .pnm, .pgm, .ppm");
+                    }
+                } else {
+                     displayError("File tidak memiliki ekstensi yang dikenali.");
+                }
             } else {
                 displayError("File tidak ditemukan atau bukan file reguler di path: " + filePath);
             }
@@ -29,19 +58,46 @@ std::string IOHandler::promptForInputPath() {
 
 std::string IOHandler::promptForOutputPath() {
     std::string filePath;
+     const std::vector<std::string> supportedOutputExtensions = {
+        ".png", ".jpg", ".jpeg", ".gif"
+    };
+
     while (true) {
-        std::cout << "Masukkan Alamat Gambar Hasil Kompresi (direktori harus ada): ";
+        std::cout << "Masukkan Alamat Gambar Hasil Kompresi (direktori harus ada, ekstensi: .png, .bmp, .jpg, .tga, .gif): ";
         std::getline(std::cin >> std::ws, filePath);
         try {
             fs::path outputPath(filePath);
+
             if (!outputPath.has_filename() || outputPath.filename().empty()) {
                  displayError("Nama file output tidak boleh kosong.");
-                 continue; 
+                 continue;
             }
+
+             if (!outputPath.has_extension()) {
+                 displayError("Nama file output harus memiliki ekstensi (contoh: .png, .jpg, .gif).");
+                 continue;
+             }
+             std::string ext = outputPath.extension().string();
+             std::transform(ext.begin(), ext.end(), ext.begin(),
+                            [](unsigned char c){ return std::tolower(c); });
+
+             bool outputExtSupported = false;
+             for(const auto& supportedExt : supportedOutputExtensions) {
+                 if (ext == supportedExt) {
+                     outputExtSupported = true;
+                     break;
+                 }
+             }
+             if (!outputExtSupported) {
+                 displayError("Ekstensi file output '" + outputPath.extension().string() + "' tidak didukung. Gunakan: .png, .bmp, .jpg, .jpeg, .tga, .gif");
+                 continue;
+             }
+
+
             if (outputPath.has_parent_path()) {
                 if (!fs::exists(outputPath.parent_path())) {
                     displayError("Direktori induk untuk path output tidak ditemukan: " + outputPath.parent_path().string());
-                    continue; 
+                    continue;
                 }
                 return filePath;
             } else {
