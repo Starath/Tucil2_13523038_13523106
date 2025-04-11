@@ -1,32 +1,25 @@
 #include "QuadTree.h"
-// #include "ErrorMetric.h" 
-#include <cmath>        // Untuk std::pow, std::abs, std::log2
+#include <cmath>        
 #include <vector>
-#include <numeric>      // Opsional: Untuk std::accumulate
-#include <limits>       // Untuk std::numeric_limits
-#include <stdexcept>    // Untuk std::runtime_error, std::out_of_range, std::invalid_argument
-#include <iostream>     // Untuk std::cerr
-#include <algorithm>    // Untuk std::max, std::min
-#include <array>        // Untuk std::array
-#include <unordered_map>// Untuk std::unordered_map (di Entropy)
+#include <numeric>      
+#include <limits>       
+#include <stdexcept>    
+#include <iostream>     
+#include <algorithm>    
+#include <array>        
+#include <unordered_map>
 
-// --- Implementasi Kelas QuadTreeNode ---
-
-// Konstruktor QuadTreeNode
 QuadTreeNode::QuadTreeNode(int x, int y, int width, int height, const Image& image)
     : x(x), y(y), width(width), height(height), leaf(true), sourceImage(image), children({}) // Inisialisasi children
 {
     if (width <= 0 || height <= 0) {
-        // Seharusnya tidak terjadi jika logika buildRecursive benar, tapi sebagai pengaman
         throw std::invalid_argument("Node dimensions must be positive.");
     }
-    // Hitung warna rata-rata saat node dibuat (berguna untuk leaf node nantinya)
     try {
         averageColor = calculateAverageColor();
     } catch (const std::exception& e) {
-         // Tangani jika terjadi error saat kalkulasi awal (misal gambar error)
          std::cerr << "Error calculating initial average color for node (" << x << "," << y << "): " << e.what() << std::endl;
-         averageColor = Pixel(0, 0, 0); // Set default jika gagal
+         averageColor = Pixel(0, 0, 0);
     }
 }
 
@@ -37,12 +30,11 @@ Pixel QuadTreeNode::calculateAverageColor() const {
     }
 
     long long sumR = 0, sumG = 0, sumB = 0;
-    long long count = 0; // Gunakan long long untuk menghindari overflow pada gambar besar
+    long long count = 0;
 
     for (int i = y; i < y + height; ++i) {
         for (int j = x; j < x + width; ++j) {
             try {
-                // Periksa batas gambar sumber secara eksplisit (lebih aman)
                 if (i >= 0 && i < sourceImage.getHeight() && j >= 0 && j < sourceImage.getWidth()) {
                     Pixel p = sourceImage.getPixel(i, j);
                     sumR += p.r;
@@ -53,7 +45,6 @@ Pixel QuadTreeNode::calculateAverageColor() const {
                      std::cerr << "Warning: Skipping pixel outside source image bounds during average calculation (" << j << ", " << i << ")\n";
                 }
             } catch (const std::out_of_range& oor) {
-                // Tangani jika getPixel melempar exception (seharusnya sudah dicek batasnya)
                  std::cerr << "Warning: Out of range access in calculateAverageColor at (" << j << ", " << i << "): " << oor.what() << std::endl;
             }
         }
@@ -69,13 +60,10 @@ Pixel QuadTreeNode::calculateAverageColor() const {
     unsigned char avgG = static_cast<unsigned char>((sumG + count / 2) / count);
     unsigned char avgB = static_cast<unsigned char>((sumB + count / 2) / count);
 
-    return Pixel(avgR, avgG, avgB);
+    return Pixel(meanR, meanG, meanB);
 }
 
-// Memilih dan memanggil fungsi perhitungan error yang sesuai
 double QuadTreeNode::calculateError(ErrorMetric metric) const {
-     // Fungsi ini sekarang hanya memanggil implementasi internal statis
-     // Penanganan error (seperti out_of_range) sebaiknya ada di dalam fungsi internal
      try {
         switch (metric) {
             case ErrorMetric::VARIANCE:
@@ -89,13 +77,11 @@ double QuadTreeNode::calculateError(ErrorMetric metric) const {
             case ErrorMetric::SSIM:
                 return calculateSSIMInternal(sourceImage, x, y, width, height);
             default:
-                 // Seharusnya tidak terjadi jika input divalidasi
                 throw std::runtime_error("Unsupported error metric selected.");
         }
     } catch (const std::exception& e) {
-        // Menangkap error dari fungsi internal jika ada
         std::cerr << "Exception during error calculation for node (" << x << "," << y << " " << width << "x" << height << "): " << e.what() << std::endl;
-        return std::numeric_limits<double>::infinity(); // Kembalikan error tinggi
+        return std::numeric_limits<double>::infinity();
     }
 }
 
@@ -109,7 +95,6 @@ double QuadTreeNode::calculateVarianceInternal(const Image& img, int x, int y, i
     // Hitung mean
     for (int i = y; i < y + h; ++i) {
         for (int j = x; j < x + w; ++j) {
-             // Asumsi getPixel akan throw jika out of range
             Pixel p = img.getPixel(i, j);
             meanR += p.r;
             meanG += p.g;
@@ -121,7 +106,6 @@ double QuadTreeNode::calculateVarianceInternal(const Image& img, int x, int y, i
     meanB /= totalPixels;
 
     double varianceR = 0, varianceG = 0, varianceB = 0;
-    // Hitung variance
     for (int i = y; i < y + h; ++i) {
         for (int j = x; j < x + w; ++j) {
             Pixel p = img.getPixel(i, j);
@@ -130,7 +114,6 @@ double QuadTreeNode::calculateVarianceInternal(const Image& img, int x, int y, i
             varianceB += std::pow(p.b - meanB, 2);
         }
     }
-    // PDF meminta rata-rata variance
     return ((varianceR / totalPixels) + (varianceG / totalPixels) + (varianceB / totalPixels)) / 3.0;
 }
 
@@ -154,7 +137,6 @@ double QuadTreeNode::calculateMADInternal(const Image& img, int x, int y, int w,
     meanB /= totalPixels;
 
     double madR = 0, madG = 0, madB = 0;
-    // Hitung MAD
      for (int i = y; i < y + h; ++i) {
         for (int j = x; j < x + w; ++j) {
             Pixel p = img.getPixel(i, j);
@@ -163,7 +145,6 @@ double QuadTreeNode::calculateMADInternal(const Image& img, int x, int y, int w,
             madB += std::abs(p.b - meanB);
         }
     }
-    // PDF meminta rata-rata MAD
     return ((madR / totalPixels) + (madG / totalPixels) + (madB / totalPixels)) / 3.0;
 }
 
@@ -192,8 +173,7 @@ double QuadTreeNode::calculateMaxPixelDifferenceInternal(const Image& img, int x
             }
         }
     }
-    if(firstPixel) return 0.0; // Tidak ada piksel valid
-    // PDF meminta rata-rata perbedaan
+    if(firstPixel) return 0.0; 
     return static_cast<double>((maxR - minR) + (maxG - minG) + (maxB - minB)) / 3.0;
 }
 
@@ -202,12 +182,10 @@ double QuadTreeNode::calculateEntropyInternal(const Image& img, int x, int y, in
     long long totalPixels = static_cast<long long>(w) * h;
     if (totalPixels == 0) return 0.0;
 
-    // Gunakan std::array untuk efisiensi
     std::array<int, 256> freqR = {0}, freqG = {0}, freqB = {0};
 
     for (int i = y; i < y + h; ++i) {
         for (int j = x; j < x + w; ++j) {
-            // Asumsi getPixel akan throw jika out of range
             Pixel p = img.getPixel(i, j);
             freqR[p.r]++;
             freqG[p.g]++;
@@ -219,7 +197,7 @@ double QuadTreeNode::calculateEntropyInternal(const Image& img, int x, int y, in
     for (int k = 0; k < 256; ++k) {
         if (freqR[k] > 0) {
             double probR = static_cast<double>(freqR[k]) / totalPixels;
-            entropyR -= probR * std::log2(probR); // Gunakan std::log2
+            entropyR -= probR * std::log2(probR); 
         }
          if (freqG[k] > 0) {
             double probG = static_cast<double>(freqG[k]) / totalPixels;
@@ -231,7 +209,6 @@ double QuadTreeNode::calculateEntropyInternal(const Image& img, int x, int y, in
         }
     }
 
-    // PDF meminta rata-rata entropy
     return (entropyR + entropyG + entropyB) / 3.0;
 }
 
@@ -240,14 +217,12 @@ double QuadTreeNode::calculateSSIMInternal(const Image& img, int x, int y, int w
     long long totalPixels = static_cast<long long>(w) * h;
     if (totalPixels == 0) return 1.0;
 
-    // Constants untuk SSIM
     const double K1 = 0.01;
     const double K2 = 0.03;
     const int L = 255;
     const double C1 = (K1 * L) * (K1 * L);
     const double C2 = (K2 * L) * (K2 * L);
 
-    // Hitung mean untuk patch asli
     double meanOrigR = 0, meanOrigG = 0, meanOrigB = 0;
     for (int i = y; i < y + h; ++i) {
         for (int j = x; j < x + w; ++j) {
@@ -261,7 +236,6 @@ double QuadTreeNode::calculateSSIMInternal(const Image& img, int x, int y, int w
     meanOrigG /= totalPixels;
     meanOrigB /= totalPixels;
 
-    // mean dari patch kompresi (pakai averageColor)
     double meanCompR = averageColor.r;
     double meanCompG = averageColor.g;
     double meanCompB = averageColor.b;
@@ -327,19 +301,17 @@ double QuadTreeNode::calculateSSIMInternal(const Image& img, int x, int y, int w
 
 
 
-// Mengumpulkan semua node secara rekursif
 void QuadTreeNode::collectNodes(std::vector<const QuadTreeNode*>& nodes) const {
     nodes.push_back(this);
     if (!leaf) {
         for (int i = 0; i < 4; ++i) {
-             if (children[i]) { // Periksa apakah pointer valid
+             if (children[i]) { 
                  children[i]->collectNodes(nodes);
              }
         }
     }
 }
 
-// Mengisi region pada targetImage sesuai node ini (jika leaf) atau anak-anaknya
 void QuadTreeNode::reconstructRegion(Image& targetImage) const {
     if (leaf) {
         // Isi area persegi panjang pada targetImage dengan averageColor
@@ -353,13 +325,11 @@ void QuadTreeNode::reconstructRegion(Image& targetImage) const {
                  try {
                     targetImage.setPixel(i, j, averageColor);
                  } catch (const std::out_of_range&) {
-                     // Seharusnya tidak terjadi karena sudah dicek min/max
                      std::cerr << "Warning: Reconstruction coordinate out of target bounds (" << j << ", " << i << ") despite checks.\n";
                  }
             }
         }
     } else {
-        // Panggil reconstructRegion secara rekursif untuk anak-anak
         for (int i = 0; i < 4; ++i) {
              if (children[i]) { // Periksa apakah pointer valid
                  children[i]->reconstructRegion(targetImage);
@@ -368,18 +338,16 @@ void QuadTreeNode::reconstructRegion(Image& targetImage) const {
     }
 }
 
-// --- Implementasi Kelas Quadtree ---
 
-// Konstruktor Quadtree: membuat root node dan memulai pembangunan rekursif
 Quadtree::Quadtree(const Image& image, ErrorMetric metric, double threshold, int minSize)
     : sourceImage(image),
       imageWidth(image.getWidth()),
       imageHeight(image.getHeight()),
       errorMetricChoice(metric),
       errorThreshold(threshold),
-      minimumBlockSize(std::max(1, minSize)), // Pastikan minSize minimal 1
-      nodeCount(0), // Inisialisasi nodeCount
-      maxDepth(0)     // Inisialisasi maxDepth
+      minimumBlockSize(std::max(1, minSize)), // minSize minimal 1
+      nodeCount(0), 
+      maxDepth(0)     
 {
     if (image.isEmpty()) {
         throw std::runtime_error("Cannot create Quadtree from an empty image.");
@@ -388,7 +356,6 @@ Quadtree::Quadtree(const Image& image, ErrorMetric metric, double threshold, int
          throw std::runtime_error("Image dimensions must be positive.");
     }
 
-    // Buat node akar
     try {
         rootNode = std::make_unique<QuadTreeNode>(0, 0, imageWidth, imageHeight, sourceImage);
     } catch (const std::exception& e) {
@@ -396,39 +363,31 @@ Quadtree::Quadtree(const Image& image, ErrorMetric metric, double threshold, int
     }
 
 
-    // Mulai proses pembangunan rekursif dari root pada kedalaman 1
     if(rootNode) {
         buildRecursive(rootNode.get(), 1);
     }
 
-    // Jika setelah build, nodeCount masih 0 (misal root gagal dibangun atau langsung jadi leaf tanpa dihitung), set minimal 1
     if (nodeCount == 0 && rootNode) {
         nodeCount = 1;
         maxDepth = 1;
     }
 }
 
-// Helper rekursif untuk membangun pohon dan menghitung metrik
 void Quadtree::buildRecursive(QuadTreeNode* node, int currentDepth) {
     if (!node) {
          std::cerr << "Error: buildRecursive called with null node." << std::endl;
          return;
     }
 
-    // 1. Update Metrik
     this->nodeCount++;
     this->maxDepth = std::max(this->maxDepth, currentDepth);
 
-    // 2. Kalkulasi Error & Cek Kondisi Subdivisi
-    // Hanya hitung error jika ukuran node memungkinkan untuk dibagi lebih lanjut
-    // dan belum mencapai batas minimum
     double error = 0.0;
     bool shouldCheckError = true;
-    bool canDividePhysically = (node->width > 1 || node->height > 1); // Bisa dibagi jika > 1x1
+    bool canDividePhysically = (node->width > 1 || node->height > 1);
     long long currentArea = static_cast<long long>(node->width) * node->height;
-    // Ukuran minimum dicek berdasarkan luas piksel
     if (currentArea < this->minimumBlockSize || !canDividePhysically) {
-        shouldCheckError = false; // Tidak perlu cek error jika sudah terlalu kecil
+        shouldCheckError = false;
     }
 
     if (shouldCheckError) {
@@ -441,35 +400,24 @@ void Quadtree::buildRecursive(QuadTreeNode* node, int currentDepth) {
          }
     }
 
-    // Cek kondisi untuk *tidak* membagi (menjadi leaf)
-    // Kondisi 1: Error di bawah atau sama dengan threshold
-    // Kondisi 2: Area saat ini sudah mencapai atau di bawah ukuran minimum
-    // Kondisi 3: Tidak bisa dibagi lagi secara fisik (misal 1xN atau Nx1 atau 1x1)
-    // Kondisi 4: Jika dibagi, ukuran anak akan < minimumBlockSize (cek ini dengan hati-hati)
-    // Area setelah dibagi 4 (perkiraan kasar, ukuran pasti tergantung ganjil/genap)
-    long long areaAfterDivideRough = (currentArea + 3) / 4; // Pembulatan ke atas sederhana
+    long long areaAfterDivideRough = (currentArea + 3) / 4;
 
     if (error <= this->errorThreshold || currentArea <= this->minimumBlockSize || !canDividePhysically || areaAfterDivideRough < this->minimumBlockSize) {
         node->leaf = true;
-        // Warna rata-rata sudah dihitung di konstruktor Node.
         return; // Node ini menjadi leaf
     }
 
-    // 3. Lakukan Subdivisi jika bukan leaf
     node->leaf = false;
 
     int halfWidth = node->width / 2;
     int halfHeight = node->height / 2;
-    // Handle dimensi ganjil: anak kedua/ketiga mendapat sisa piksel
     int widthRem = node->width - halfWidth;
     int heightRem = node->height - halfHeight;
 
-    // Pastikan dimensi anak tidak nol (penting jika width/height awal = 1)
-    if (halfWidth == 0 && widthRem == 0) widthRem = 1; // Jika width=1, anak kanan tetap perlu lebar min 1
-    if (halfHeight == 0 && heightRem == 0) heightRem = 1; // Jika height=1, anak bawah tetap perlu tinggi min 1
+    if (halfWidth == 0 && widthRem == 0) widthRem = 1;
+    if (halfHeight == 0 && heightRem == 0) heightRem = 1;
 
     try {
-        // Buat anak-anak node
         if (halfWidth > 0 && halfHeight > 0)
             node->children[0] = std::make_unique<QuadTreeNode>(node->x, node->y, halfWidth, halfHeight, node->sourceImage);
         if (widthRem > 0 && halfHeight > 0)
@@ -479,39 +427,28 @@ void Quadtree::buildRecursive(QuadTreeNode* node, int currentDepth) {
         if (widthRem > 0 && heightRem > 0)
             node->children[3] = std::make_unique<QuadTreeNode>(node->x + halfWidth, node->y + halfHeight, widthRem, heightRem, node->sourceImage);
 
-        // Panggil rekursif untuk setiap anak pada kedalaman berikutnya
         for (int i = 0; i < 4; ++i) {
-            if (node->children[i]) { // Hanya panggil jika anak berhasil dibuat
+            if (node->children[i]) {
                 buildRecursive(node->children[i].get(), currentDepth + 1);
             }
         }
     } catch (const std::exception& e) {
-         // Jika pembuatan anak gagal, jadikan node ini leaf saja
          std::cerr << "Error creating child nodes for node (" << node->x << "," << node->y << "): " << e.what() << ". Making it a leaf." << std::endl;
          node->leaf = true;
-         node->children = {}; // Hapus pointer anak yang mungkin sudah dibuat sebagian
-         // Kurangi nodeCount yang sudah ditambahkan di awal fungsi ini
-         // (Ini agak rumit, mungkin lebih baik tidak increment di awal jika bisa error)
-         // Alternatif: biarkan nodeCount >实际 node jika error, atau lakukan re-count jika perlu.
-         // Untuk sekarang, kita biarkan count-nya, tapi node ini jadi leaf.
+         node->children = {};
     }
 }
 
-// Merekonstruksi gambar dari Quadtree
 Image Quadtree::reconstructImage() const {
     if (!rootNode) {
-        // Kembalikan gambar kosong jika tidak ada root
         std::cerr << "Warning: reconstructImage called on uninitialized Quadtree. Returning empty image." << std::endl;
         return Image(0, 0);
     }
-    // Buat gambar baru dengan ukuran yang sama
     Image reconstructed(imageWidth, imageHeight);
-    // Mulai rekonstruksi dari root
     rootNode->reconstructRegion(reconstructed);
     return reconstructed;
 }
 
-// Mengumpulkan semua node dalam pohon
 void Quadtree::getAllNodes(std::vector<const QuadTreeNode*>& nodes) const {
     nodes.clear();
      if (rootNode) {
@@ -519,6 +456,5 @@ void Quadtree::getAllNodes(std::vector<const QuadTreeNode*>& nodes) const {
      }
 }
 
-// Implementasi getter inline (biasanya di .h, tapi bisa juga di sini)
-// int Quadtree::getDepth() const { return maxDepth; }
-// size_t Quadtree::getNodeCount() const { return nodeCount; }
+int Quadtree::getDepth() const { return maxDepth; }
+size_t Quadtree::getNodeCount() const { return nodeCount; }
