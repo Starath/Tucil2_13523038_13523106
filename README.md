@@ -41,12 +41,12 @@ Repository Tucil 2 for IF2211 "Strategi Algoritma"
 ---
 
 ## Cara Kompilasi Program
-*(Bagian ini dikosongkan dulu sesuai instruksi)*
+
 
 ---
 
 ## Cara Menjalankan Program
-*(Bagian ini dikosongkan dulu sesuai instruksi)*
+
 
 ---
 
