@@ -205,30 +205,74 @@ ErrorMetric IOHandler::promptForErrorMetric() {
         if (std::cin >> choice && choice >= 1 && choice <= 5) {
             clearInputBuffer();
             switch (choice) {
-                case 1: return ErrorMetric::VARIANCE;
-                case 2: return ErrorMetric::MAD;
-                case 3: return ErrorMetric::MAX_PIXEL_DIFFERENCE;
-                case 4: return ErrorMetric::ENTROPY;
-                case 5: return ErrorMetric::SSIM;
+                case 1: selectedMetric = ErrorMetric::VARIANCE; break;
+                case 2: selectedMetric = ErrorMetric::MAD; break;
+                case 3: selectedMetric = ErrorMetric::MAX_PIXEL_DIFFERENCE; break;
+                case 4: selectedMetric = ErrorMetric::ENTROPY; break;
+                case 5: selectedMetric = ErrorMetric::SSIM; break;
+                
             }
+            return selectedMetric; 
         } else {
             displayError("   Masukan tidak valid. Harap masukkan angka bulat antara 1 dan 5.");
-            std::cin.clear();
-            clearInputBuffer();
+            std::cin.clear(); 
+            clearInputBuffer(); 
         }
     }
 }
 
 float IOHandler::promptForThreshold() {
     float value;
+    std::string metricName;
+    float min_val = 0.0; 
+    float max_val = std::numeric_limits<float>::max(); 
+
+    if (selectedMetric == ErrorMetric::VARIANCE) {
+        metricName = "Variance";
+        min_val = 0.0;
+        max_val = 1000.0;
+    } else if (selectedMetric == ErrorMetric::MAD) {
+        metricName = "MAD";
+        min_val = 0.0;
+        max_val = 255.0;
+    } else if (selectedMetric == ErrorMetric::MAX_PIXEL_DIFFERENCE) {
+        metricName = "Max Pixel Difference";
+        min_val = 0.0;
+        max_val = 255.0;
+    } else if (selectedMetric == ErrorMetric::ENTROPY) {
+        metricName = "Entropy";
+        min_val = 0.0;
+        max_val = 8.0; 
+    } else if (selectedMetric == ErrorMetric::SSIM) {
+        metricName = "SSIM Error (1-SSIM)";
+        min_val = 0.0;
+        max_val = 1.0; 
+    } else {
+        metricName = "Unknown Metric";
+    }
+
+    std::cout << std::fixed << std::setprecision(4); 
+    std::cout << "   (Rentang valid untuk " << metricName << " adalah [" << min_val << ".." << max_val << "])" << std::endl;
+    std::cout << std::defaultfloat; 
+
     while (true) {
-        std::cout << "3. Masukkan ambang batas (threshold, >= 0): ";
-        if (std::cin >> value && value >= 0.0f) {
-             clearInputBuffer();
-            return value;
+        std::cout << "3. Masukkan ambang batas (threshold): ";
+        if (std::cin >> value) {
+            if (value >= min_val && value <= max_val) {
+                clearInputBuffer(); 
+                return value;       
+            } else {
+                std::stringstream ss;
+                ss << std::fixed << std::setprecision(4);
+                ss << "   Masukan tidak valid. Threshold untuk " << metricName
+                   << " harus berada dalam rentang [" << min_val << ".." << max_val << "].";
+                displayError(ss.str());
+                clearInputBuffer(); 
+            }
         } else {
-            displayError("   Masukan tidak valid. Harap masukkan angka non-negatif.");
-            std::cin.clear();
+            
+            displayError("   Masukan tidak valid. Harap masukkan angka.");
+            std::cin.clear(); 
             clearInputBuffer();
         }
     }

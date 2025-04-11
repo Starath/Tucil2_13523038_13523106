@@ -9,6 +9,7 @@ namespace fs = std::filesystem;
 
 class IOHandler {
 private:
+    ErrorMetric selectedMetric; 
     void clearInputBuffer() const;
 
 public:
